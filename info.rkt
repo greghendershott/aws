@@ -6,7 +6,7 @@
   '("Provides support for some Amazon Web Services,"
     "such as S3, SDB, SES, SNS, and SQS."))
 (define release-notes
-  '((p "Initial release.")))
+  '((p "Don't use evaluator for Scribble examples.")))
 (define homepage "https://github.com/greghendershott/aws")
 
 (define version "2012-08-18")

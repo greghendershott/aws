@@ -1,10 +1,6 @@
 #lang scribble/manual
 
 @(require planet/scribble
-          planet/version
-          planet/resolver
-          scribble/eval
-          racket/sandbox
           (for-label racket)
           (for-label net/head)
           (for-label (this-package-in cw))
@@ -17,24 +13,6 @@
           (for-label (this-package-in sqs))
           (for-label (this-package-in util))
           )
-
-@(define my-evaluator
-   (call-with-trusted-sandbox-configuration
-    (lambda ()
-      (parameterize ([sandbox-output 'string]
-                     [sandbox-error-output 'string])
-        (make-evaluator 'racket
-                        #:requires
-                        (list (resolve-planet-path `(planet gh/aws/cw))
-                              (resolve-planet-path `(planet gh/aws/exn))
-                              (resolve-planet-path `(planet gh/aws/keys))
-                              (resolve-planet-path `(planet gh/aws/s3))
-                              (resolve-planet-path `(planet gh/aws/sdb))
-                              (resolve-planet-path `(planet gh/aws/ses))
-                              (resolve-planet-path `(planet gh/aws/sns))
-                              (resolve-planet-path `(planet gh/aws/sqs))
-                              (resolve-planet-path `(planet gh/aws/util))
-                              ))))))
 
 @title{Amazon Web Services}
 
@@ -239,8 +217,11 @@ Given @racket[bucket] and @racket[path] (both of which should @italic{not}
 start with a leading @racket["/"]), use @racket[s3-scheme] and @racket[s3-host]
 to make the URI for the resource.
 
-@examples[#:eval my-evaluator
-(bucket&path->uri "bucket" "path/to/file")]
+Example:
+@racket[
+> (bucket&path->uri "bucket" "path/to/file")
+"http://bucket.s3.amazonaws.com/path/to/file"
+]
 
 }
 
@@ -251,8 +232,13 @@ to make the URI for the resource.
 Given a combined bucket+path string such as @racket["bucket/path/to/resource"],
 return the bucket portion, path portion and URI.
 
-@examples[#:eval my-evaluator
-(bucket+path->bucket&path&uri "bucket/path/to/file")]
+Eexample:
+@racket[
+> (bucket+path->bucket&path&uri "bucket/path/to/file")
+"bucket"
+"path/to/file"
+"http://bucket.s3.amazonaws.com/path/to/file"
+]
 
 }
 
@@ -573,7 +559,7 @@ with a MIME type.
 
 @subsection{S3 examples}
 
-@interaction0[#:eval my-evaluator
+@racket[
 (require (planet gh/aws/keys)
          (planet gh/aws/s3))
 
@@ -870,17 +856,29 @@ between a @racket[number] and its padded/offset @racket[string] representation.
 Converters created using @racket[int<->str] for signed and unsigned integers of
 8, 16, and 32 bytes.
 
-@examples[#:eval my-evaluator
-(int->str/u8 0)
-(int->str/u8 255)
-(int->str/s8 -128)
-(int->str/s8 0)
-(int->str/s8 127)
-(int->str/u32 0)
-(int->str/u32 (expt 2 32))
-(int->str/s32 (- (expt 2 31)))
-(int->str/s32 0)
-(int->str/s32 (+ (expt 2 31)))]
+Examples:
+@racket[
+> (int->str/u8 0)
+"000"
+> (int->str/u8 255)
+"255"
+> (int->str/s8 -128)
+"000"
+> (int->str/s8 0)
+"128"
+> (int->str/s8 127)
+"255"
+> (int->str/u32 0)
+"0000000000"
+> (int->str/u32 (expt 2 32))
+"4294967296"
+> (int->str/s32 (- (expt 2 31)))
+"0000000000"
+> (int->str/s32 0)
+"2147483648"
+> (int->str/s32 (+ (expt 2 31)))
+"4294967296"
+]
 
 }
 
@@ -889,7 +887,7 @@ Converters created using @racket[int<->str] for signed and unsigned integers of
 In the examples below, the reason for using @racket[sleep] is that SDB has an
 ``eventual consistency'' model.
 
-@interaction0[#:eval my-evaluator
+@racket[
 (define test-domain "TestDomain")
 
 (ensure-have-keys)
@@ -1050,9 +1048,6 @@ Return the list of email addresses currently verified with SES.
 
 Get the send quota.
 
-@examples[#:eval my-evaluator
-(get-send-quota)]
-
 }
 
 
@@ -1073,9 +1068,6 @@ Get send statistics. Although SES keeps statistics for only your last 14 days
 of sending, each statistic is for a 15 minute bucket and the @racket[(listof
 send-statistics)] may be quite long. Note that the list is not necessarily
 sorted in any particular order.
-
-@examples[#:eval my-evaluator
-(car (get-send-statistics))]
 
 }
 
