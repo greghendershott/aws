@@ -1,0 +1,48 @@
+# Supply a file in this format as ~/.aws-tests-data.
+# You should change the values to those suitable for your AWS account
+# and email addresses.
+
+# Name of a test bucket on S3.
+# This bucket will be created and deleted during the test!
+# Remember that bucket names are global (shared among all S3 users)
+# therefore you may want to pick a name with your domain name in it.
+# Do NOT use leading / in the name.
+test/bucket = test-bucket
+
+# Name of a test resource to put/get/delete on S3.
+# This will be created under test/bucket.
+# Do NOT use leading / in the name.
+test/path = path/to/test.txt
+
+# Email address you HAVE verified with SES.
+test/verified-sender = <email-address>
+
+# Email address you have NOT verified with SES.
+test/unverified-sender = <email-address>
+
+# Email recipient of some test emails
+test/recipient = <email-address>
+
+# Name of a test domain (i.e. "table") on SDB.
+# This domain will get munged -- data added/deleted, and in fact the
+# entire domain will be created/deleted -- so pick an SDB domain name
+# you're not using in production!
+test/domain = TestDomain
+
+# Name of a test topic with SNS
+# This topic will get munged -- data added/deleted, and in fact the
+# entire topic will be created/deleted -- so pick an SDB topic name
+# you're not using in production!
+test/topic = TestTopic
+
+# Name of a test queue with SNS
+# This queue will get munged -- messages added/removed, and in fact
+# the entire queue will be created/deleted -- so pick an SQS queue
+# name you're not using in production!
+test/queue = TestQueue
+
+# Name of a namespace and metric with CloudWatch
+# This will get test metric data put to it, so pick names you're
+# not using in production!
+test/namespace = testnamespace
+test/metric = testmetric
