@@ -218,7 +218,7 @@ start with a leading @racket["/"]), use @racket[s3-scheme] and @racket[s3-host]
 to make the URI for the resource.
 
 Example:
-@racket[
+@racketblock[
 > (bucket&path->uri "bucket" "path/to/file")
 "http://bucket.s3.amazonaws.com/path/to/file"
 ]
@@ -232,8 +232,8 @@ Example:
 Given a combined bucket+path string such as @racket["bucket/path/to/resource"],
 return the bucket portion, path portion and URI.
 
-Eexample:
-@racket[
+Example:
+@racketblock[
 > (bucket+path->bucket&path&uri "bucket/path/to/file")
 "bucket"
 "path/to/file"
@@ -559,7 +559,7 @@ with a MIME type.
 
 @subsection{S3 examples}
 
-@racket[
+@codeblock{
 (require (planet gh/aws/keys)
          (planet gh/aws/s3))
 
@@ -610,7 +610,7 @@ with a MIME type.
 
 (delete b+p)
 (delete-bucket test-bucket)
-]
+}
 
 @; ----------------------------------------------------------------------------
 @section{SDB (Database)}
@@ -857,7 +857,7 @@ Converters created using @racket[int<->str] for signed and unsigned integers of
 8, 16, and 32 bytes.
 
 Examples:
-@racket[
+@racketblock[
 > (int->str/u8 0)
 "000"
 > (int->str/u8 255)
@@ -887,10 +887,13 @@ Examples:
 In the examples below, the reason for using @racket[sleep] is that SDB has an
 ``eventual consistency'' model.
 
-@racket[
-(define test-domain "TestDomain")
+@codeblock{
+(require (planet gh/aws/keys)
+         (planet gh/aws/sdb))
 
 (ensure-have-keys)
+
+(define test-domain "TestDomain")
 
 (delete-domain test-domain)
 (create-domain test-domain)
@@ -956,7 +959,7 @@ In the examples below, the reason for using @racket[sleep] is that SDB has an
                      test-domain))
 
 (delete-domain test-domain)
-]
+}
 
 @; ----------------------------------------------------------------------------
 @section{SES (Email)}
@@ -1001,7 +1004,7 @@ succeeds or SES fails with some other error.
 
 @defproc[(send-raw-email [mail-from string?][rcpt-to string?][raw-message string?]) xexpr?]{
 
-Send a raw email. SES requrires a @tt{Source} to be specified. If a
+Send a raw email. SES requires a @tt{Source} to be specified. If a
 @tt{Return-Path} mail header is supplied in @racket[raw-message] then that will
 be used as the @tt{Source}, otherwise @racket[mail-from] will be used.
 
