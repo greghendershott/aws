@@ -98,7 +98,7 @@ Your AWS private key, a.k.a. ``Secret Key.''}
 
 
 @defproc[(read-keys
-[file path? (build-path(find-system-path 'home-dir) ".keys")]
+[file path? (build-path(find-system-path 'home-dir) ".aws-keys")]
 ) void?]{
 
 Set the parameters @racket[public-key] and @racket[private-key] by
