@@ -3,7 +3,6 @@
 (require net/head
          net/base64
          net/uri-codec
-         web-server/stuffers/hmac-sha1
          file/md5
          xml
          (planet gh/http/request)
