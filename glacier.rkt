@@ -11,6 +11,16 @@
          "sigv4.rkt"
          )
 
+(provide region
+         create-vault
+         delete-vault
+         list-vaults
+         describe-vault
+         create-archive
+         create-archive/multipart-upload
+         valid-part-size?
+         )
+
 (define service "glacier")
 (define glacier-version "2012-06-01")
 (define region (make-parameter "us-east-1"))
@@ -174,11 +184,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (valid-part-size? n)
-  (for/or ([e (in-range 20 33 1)])      ;1MB to 4GB in powers of 2
-      (equal? n (expt 2 e))))
+  (and (exact-integer? n)
+       (for/or ([e (in-range 20 33 1)])      ;1MB to 4GB in powers of 2
+           (equal? n (expt 2 e)))))
 
 (define/contract (start-multipart-upload name part-size desc)
-  (string? exact-positive-integer? string?  . -> . string?)
+  (string? valid-part-size? string?  . -> . string?)
   (define m "POST")
   (define u (string-append "http://" host "/-/vaults/" name "/multipart-uploads"))
   (define h (hash 'Host host
@@ -278,7 +289,7 @@
                          (extract-field "x-amz-archive-id" h))))
 
 (define/contract (create-archive/multipart-upload name desc part-size data)
-  (string? string? exact-positive-integer? bytes? . -> . any/c)
+  (string? string? valid-part-size? bytes? . -> . any/c)
   (define id (start-multipart-upload name part-size desc))
   (printf "upload-id ~a\n" id)
   (define len (bytes-length data))
