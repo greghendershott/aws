@@ -1,8 +1,8 @@
 Overview
 ========
 
-Provides [Racket](http://www.racket-lang.org) support for many Amazon
-Web Services:
+Provides [Racket](http://www.racket-lang.org) support for many [Amazon
+Web Services](http://aws.amazon.com/documentation/):
 
 * S3 (Simple Storage Service)
 * SDB (Simple Database Service)
@@ -20,10 +20,10 @@ Documentation
 =============
 
 Documentation is written using Racket's Scribble. The raw source is in
-manual.scrbl.
+[manual.scrbl](https://github.com/greghendershott/aws/blob/master/manual.scrbl).
 
 The HTML output that you'd actually want to read can be found on
-[PLaneT](http://planet.plt-scheme.org/display.ss?package=aws.plt&owner=gh).
+[PLaneT](http://planet.plt-scheme.org/package-source/gh/aws.plt/1/2/planet-docs/manual/index.html).
 
 You can also generate it using `./make-doc.sh`, then point your browser to
 [file:///tmp/aws-doc/manual.html](file:///tmp/aws-doc/manual.html).
