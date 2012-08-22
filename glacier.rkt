@@ -18,6 +18,7 @@
          describe-vault
          create-archive
          create-archive/multipart-upload
+         create-archive-from-file
          valid-part-size?
          )
 
@@ -134,7 +135,7 @@
                   'Content-Length (bytes-length data)
                   'x-amz-glacier-version glacier-version
                   'x-amz-content-sha256 (bytes->hex-string (SHA256 data))
-                  'x-amz-sha256-tree-hash (bytes->hex-string (tree-hash data))
+                  'x-amz-sha256-tree-hash (tree-hash data)
                   'x-amz-archive-description desc
                   ))
   (call/output-request "1.1"
@@ -238,7 +239,7 @@
                                          offset
                                          (sub1 (+ offset (bytes-length data))))
                   'x-amz-content-sha256 (bytes->hex-string (SHA256 data))
-                  'x-amz-sha256-tree-hash (bytes->hex-string (tree-hash data))
+                  'x-amz-sha256-tree-hash (tree-hash data)
                   ))
   (call/output-request "1.1"
                        m
@@ -289,14 +290,33 @@
                          (extract-field "x-amz-archive-id" h))))
 
 (define/contract (create-archive/multipart-upload name desc part-size data)
-  (string? string? valid-part-size? bytes? . -> . any/c)
+  (string? string? valid-part-size? bytes? . -> . string?)
   (define id (start-multipart-upload name part-size desc))
-  (printf "upload-id ~a\n" id)
+  ;;(printf "upload-id ~a\n" id)
   (define len (bytes-length data))
-  (printf "part-size ~a total-len ~a\n" part-size len)
+  ;;(printf "part-size ~a total-len ~a\n" part-size len)
   (for ([i (in-range 0 len part-size)])
       (upload-part name id i (subbytes data i (min (+ i part-size) len))))
-  (finish-multipart-upload name id len (bytes->hex-string (tree-hash data))))
+  (finish-multipart-upload name id len (tree-hash data)))
+
+(define/contract (create-archive-from-file vault path)
+  (string? path? . -> . string?)
+  (define ps (path->string path))
+  (define len (file-size ps))
+  (with-input-from-file ps
+    (lambda ()
+      (define desc (string-append ps " " (seconds->gmt-8601-string)))
+      (define id (start-multipart-upload vault 1MB desc))
+      (let loop ([i 0]
+                 [xs '()])
+        (define b (read-bytes 1MB))
+        (cond
+         [(eof-object? b)
+          (finish-multipart-upload vault id len (hashes->tree (reverse xs)))]
+         [else
+          (upload-part vault id i b)
+          (loop (+ i 1MB)
+                (cons (SHA256 b) xs))])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -305,18 +325,25 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Produce a list of SHA256 hashes of each 1MB of the bytes
+(define (block-hashes d)
+  (define total-len (bytes-length d))
+  (for/list ([i (in-range 0 total-len 1MB)])
+      (SHA256 (subbytes d i (min (+ i 1MB) total-len)))))
+
+;; Given a list of data block hashes, "tree them up" for AWS Glacier
+(define/contract (hashes->tree xs)
+  ((listof bytes?) . -> . string?)
+  (bytes->hex-string (reduce-pairs (lambda (a b)
+                                     (if b
+                                         (SHA256 (bytes-append a b))
+                                         a))
+                                   xs
+                                   #f)))
+
 (define/contract (tree-hash d)
-  (bytes? . -> . bytes?)
-  (define (data-blocks d)
-    (define total-len (bytes-length d))
-    (for/list ([i (in-range 0 total-len 1MB)])
-        (SHA256 (subbytes d i (min (+ i 1MB) total-len)))))
-  (reduce-pairs (lambda (a b)
-                  (if b
-                      (SHA256 (bytes-append a b))
-                      a))
-                (data-blocks d)
-                #f))
+  (bytes? . -> . string?)
+  (hashes->tree (block-hashes d)))
 
 ;;(bytes->hex-string (tree-hash #"hi"))
 ;;(tree-hash (make-bytes (+ (* 3 1MB) 4)))
@@ -331,3 +358,4 @@
 ;; (delete-archive "test" id)
 ;; (create-archive "test" (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive/multipart-upload "test" "desc" 1MB (make-bytes (+ 3 (* 4 1MB))))
+;; (create-archive-from-file "test" (build-path 'same "manual.scrbl"))
