@@ -320,6 +320,89 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define/contract (request-inventory name desc [sns #f])
+  ((string? string?) ((or/c #f string?)) . ->* . string?)
+  (define data (jsexpr->bytes (apply hasheq
+                                     (append
+                                      (list 'Type "inventory-retrieval"
+                                            'Description desc
+                                            'Format "JSON")
+                                      (if sns (list 'SNSTopic sns) '())))))
+  (define m "POST")
+  (define u (string-append "http://" host "/-/vaults/" name "/jobs"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'Content-Length (bytes-length data)
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (call/output-request "1.1"
+                       m
+                       u
+                       (lambda (out) (display data out))
+                       (bytes-length data)
+                       (dict-set h
+                                 'Authorization
+                                 (aws-v4-authorization
+                                  m
+                                  u
+                                  h
+                                  data
+                                  (region)
+                                  service))
+                       (lambda (p h)
+                         (check-response p h)
+                         (void (read-entity/bytes p h))
+                         (extract-field "x-amz-job-id" h))))
+
+(define (get-job-output name job)
+  (define m "GET")
+  (define u (string-append "http://" host "/-/vaults/" name "/jobs/" job
+                           "/output"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (call/input-request "1.1"
+                      m
+                      u
+                      (dict-set h
+                                'Authorization
+                                (aws-v4-authorization
+                                 m
+                                 u
+                                 h
+                                 #""
+                                 (region)
+                                 service))
+                      (lambda (p h)
+                        (check-response p h)
+                        (read-entity/jsexpr p h))))
+
+(define (list-jobs name)
+  (define m "GET")
+  (define u (string-append "http://" host "/-/vaults/" name "/jobs"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (call/input-request "1.1"
+                      m
+                      u
+                      (dict-set h
+                                'Authorization
+                                (aws-v4-authorization
+                                 m
+                                 u
+                                 h
+                                 #""
+                                 (region)
+                                 service))
+                      (lambda (p h)
+                        (check-response p h)
+                        (read-entity/jsexpr p h))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (define (read-entity/jsexpr in h)
   (bytes->jsexpr (read-entity/bytes in h)))
 
@@ -350,6 +433,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Examples
+
 ;; (create-vault "test")
 ;; (list-vaults)
 ;; (delete-vault "test")
@@ -359,3 +444,12 @@
 ;; (create-archive "test" (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive/multipart-upload "test" "desc" 1MB (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive-from-file "test" (build-path 'same "manual.scrbl"))
+;; (request-inventory "test" "")
+;; (for ([x (in-list (hash-ref (list-jobs "test") 'JobList '()))])
+;;     (define id (hash-ref x 'JobId))
+;;   (define date (hash-ref x 'CreationDate))
+;;   (define completed? (hash-ref x 'Completed))
+;;   (printf "Job ~a created ~a is ~a completed.\n"
+;;           id date (if completed? "" "NOT"))
+;;   (when completed?
+;;     (displayln (get-job-output "test" id))))
