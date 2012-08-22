@@ -1,3 +1,21 @@
+Overview
+========
+
+Provides [Racket](http://www.racket-lang.org) support for many Amazon
+Web Services:
+
+* S3 (Simple Storage Service)
+* SDB (Simple Database Service)
+* SES (Simple Email Service)
+* SNS (Simple Notification Service)
+* SQS (Simple Queue Service)
+* CloudWatch (monitoring)
+* Glacier (archiving). [1]
+* Authorization signature version 4.
+
+[1]: Glacier is brand-new as of 2012-08-22. Support here is still
+in-progress and not yet pushed to PLaneT.
+
 Documentation
 =============
 
