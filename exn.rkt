@@ -2,6 +2,8 @@
 
 (require (planet gh/http/request)
          (planet gh/http/head)
+         net/head
+         json
          xml
          "util.rkt"
          )
@@ -33,6 +35,7 @@
     ;; Codes we return and expect client to deal with.
     [200 h]
     [201 h]
+    [202 h]
     [204 h]
     [206 h]
     [301 h]
@@ -49,6 +52,19 @@
   (define http-code (extract-http-code h))
   (define http-text (extract-http-text h))
   (cond
+   [(and (bytes? e)
+         (equal? "application/json" (extract-field "Content-Type" h)))
+    (define js (bytes->jsexpr e))
+    (define aws-code (hash-ref js 'code ""))
+    (define aws-msg (hash-ref js 'message ""))
+    (exn:fail:aws (format "HTTP ~a \"~a\". AWS Code=\"~a\" Message=\"~a\""
+                          http-code http-text aws-code aws-msg)
+                  ccm
+                  ;; fields exn:fail:aws adds to exn:fail
+                  http-code
+                  http-text
+                  aws-code
+                  aws-msg)]
    [(bytes? e)
     (match e
       [(regexp "<Code>(.*?)</Code>.*?<Message>(.*?)</Message>"
