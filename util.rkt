@@ -174,3 +174,48 @@
                  host
                  (if ssl? ":443" "")
                  path))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Process a list by calling `f' for each pair of values, and
+;; replacing the two with the single value returned by `f'. When the
+;; original list has an odd number of items, `f' is called with the
+;; last item and with the provided `missing-value'.  See check-equal
+;; tests for examples.
+(define/contract/provide (fold-pairs f xs [missing-value #f])
+  (((any/c any/c . -> . any/c) list?) (any/c) . ->* . list?)
+  (let loop ([xs xs])
+    (cond
+     [(empty? xs)
+      '()]
+     [(empty? (cdr xs))
+      ;;(printf "fold-pairs ~a ~a\n" (car xs) last-val)
+      (cons (f (car xs) missing-value)
+            (loop '()))]
+     [else
+      ;;(printf "fold-pairs ~a ~a\n" (car xs) (cadr xs))
+      (cons (f (car xs) (cadr xs))
+            (loop (cddr xs)))])))
+
+;; Repeatedly call `fold-pairs' until there is just one value, and
+;; return that.
+(define/contract/provide (reduce-pairs f xs [missing-value #f])
+  (((any/c any/c . -> . any/c) list?) (any/c) . ->* . any/c)
+  (when (empty? xs)
+    (error 'reduce-pairs "expected non-empty list"))
+  (let ([xs (fold-pairs f xs missing-value)])
+    (cond
+     [(empty? (cdr xs)) (car xs)]         ;reduced to one, the answer
+     [else (reduce-pairs f xs missing-value)])))
+
+(module+ test
+  (require rackunit)
+  (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
+  (check-equal? (fold-pairs cons '(1 2 3))     '((1 . 2) (3 . #f)))
+  (check-equal? (fold-pairs cons '(1 2 3)   4) '((1 . 2) (3 . 4)))
+  (check-equal? (fold-pairs cons '(1 2 3 4) 5) '((1 . 2) (3 . 4)))
+  (check-equal? (reduce-pairs + '(1 2 3 4)) 10)
+  (check-equal? (reduce-pairs + '(1 2 3) 4) 10)
+  (check-equal? (reduce-pairs + '(1) 0) 1)
+  (check-exn exn:fail? (lambda () (reduce-pairs + '())))
+  )

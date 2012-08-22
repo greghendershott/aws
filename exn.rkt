@@ -32,6 +32,8 @@
   (match http-code
     ;; Codes we return and expect client to deal with.
     [200 h]
+    [201 h]
+    [204 h]
     [206 h]
     [301 h]
     [302 h]
@@ -66,7 +68,7 @@
                      http-code
                      http-text
                      #f
-                     #f)])]
+                     h)])]
    [(xexpr? e)
     (define aws-code (first-tag-value e 'Code))
     (define aws-msg (first-tag-value e 'Message))
