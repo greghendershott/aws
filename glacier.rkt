@@ -69,13 +69,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))
@@ -95,13 +90,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (hash-ref (read-entity/jsexpr p h) 'VaultList))))
@@ -118,13 +108,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
@@ -149,13 +134,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization
-                                  m
-                                  u
-                                  h
-                                  data
-                                  (region)
-                                  service))
+                                 (aws-v4-authorization m u h data
+                                                       (region) service))
                        (lambda (p h)
                          (check-response p h)
                          (void (read-entity/jsexpr p h))
@@ -174,13 +154,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))
@@ -210,13 +185,8 @@
                        0
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization
-                                  m
-                                  u
-                                  h
-                                  #""
-                                  (region)
-                                  service))
+                                 (aws-v4-authorization m u h #""
+                                                       (region) service))
                        (lambda (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
@@ -252,13 +222,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization
-                                  m
-                                  u
-                                  h
-                                  data
-                                  (region)
-                                  service))
+                                 (aws-v4-authorization m u h data
+                                                       (region) service))
                        (lambda (p h)
                          (check-response p h)
                          (void))))
@@ -281,13 +246,9 @@
                        0
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization
-                                  m
-                                  u
-                                  h
-                                  #""
-                                  (region)
-                                  service))
+                                 (aws-v4-authorization m u h #""
+                                                       (region)
+                                                       service))
                        (lambda (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
@@ -355,13 +316,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization
-                                  m
-                                  u
-                                  h
-                                  data
-                                  (region)
-                                  service))
+                                 (aws-v4-authorization m u h data
+                                                       (region) service))
                        (lambda (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
@@ -379,13 +335,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
@@ -404,13 +355,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (p h)
                         (check-response p h)
                         (match (extract-field "Content-Type" h)
@@ -433,13 +379,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
                       (lambda (in h)
                         (check-response in h)
                         (with-output-to-file path
