@@ -12,6 +12,8 @@
          (rename-in ffi/unsafe
                     [-> f->]))
 
+(define SHA256-bytes-length 32)         ;256 bits = 32 bytes
+
 (define EVP_SHA256
   (and libcrypto
        (get-ffi-obj 'EVP_sha256 libcrypto
@@ -25,18 +27,14 @@
                          [key_len : _int = (bytes-length key)]
                          [data : _bytes]
                          [data_len : _int = (bytes-length data)]
-                         [md : (_bytes o 32)]
+                         [md : (_bytes o SHA256-bytes-length)]
                          [md_len : (_ptr o _uint)]
                          f-> _bytes
                          f-> md))
       (lambda (key data) (error 'HMAC-SHA256/raw "libcrypto could not load"))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (define (HMAC-SHA256 key data)
-  ;; It returns the same pointer always
-  ;; A SHA256 is 32 bytes, including 0s
-  (make-sized-byte-string (HMAC-SHA256/raw key data) 32))
+  (make-sized-byte-string (HMAC-SHA256/raw key data) SHA256-bytes-length))
 
 
 (define SHA256/raw
@@ -44,17 +42,22 @@
       (get-ffi-obj 'SHA256 libcrypto
                    (_fun [data : _bytes]
                          [data_len : _int = (bytes-length data)]
-                         [md : (_bytes o 32)]
+                         [md : (_bytes o SHA256-bytes-length)]
                          ;;[md_len : (_ptr o _uint)]
                          f-> _bytes
                          f-> md))
-      (lambda (key data) (error 'HMAC-SHA256/raw "libcrypto could not load"))))
+      (lambda (key data) (error 'SHA256/raw "libcrypto could not load"))))
 
 (define (SHA256 data)
-  (make-sized-byte-string (SHA256/raw data) 32))
+  (make-sized-byte-string (SHA256/raw data) SHA256-bytes-length))
+
+(define (SHA256? x) ;predicate for contracts
+  (and (bytes? x)
+       (= (bytes-length x) SHA256-bytes-length)))
 
 (provide/contract
- [SHA256 (bytes? . -> . bytes?)]
+ [SHA256? (any/c . -> . boolean?)]
+ [SHA256 (bytes? . -> . SHA256?)]
  [HMAC-SHA256 (bytes? bytes? . -> . bytes?)])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
