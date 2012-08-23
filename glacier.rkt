@@ -323,6 +323,7 @@
                          (void (read-entity/bytes p h))
                          (extract-field "x-amz-job-id" h))))
 
+;; TO-DO: Support > 1,000 by using `marker' query param
 (define (list-jobs name)
   (define m "GET")
   (define u (string-append "http://" host "/-/vaults/" name "/jobs"))
@@ -366,7 +367,7 @@
 (define/contract (get-job-output-to-file name job path exists)
   (string? string? path? (or/c 'error 'append 'update 'replace 'truncate
                                'truncate/replace)
-           . -> . (or/c jsexpr? bytes?))
+           . -> . boolean?)
   (define m "GET")
   (define u (string-append "http://" host "/-/vaults/" name "/jobs/" job
                            "/output"))
@@ -385,7 +386,22 @@
                         (check-response in h)
                         (with-output-to-file path
                           (lambda ()
-                            (read-entity/port in h (current-output-port)))))))
+                            (read-entity/port in h (current-output-port)))
+                          #:exists exists)
+                        ;; Verify that x-amz-sha256-tree-hash matches.
+                        ;; TO-DO: Might be better to do block by block, above.
+                        (verify-file
+                         path
+                         (extract-field "x-amz-sha256-tree-hash" h)))))
+
+(define (verify-file path tree-hash)
+  (with-input-from-file path
+    (lambda ()
+      (define ok?
+        (equal? (hashes->tree (for/list ([i (in-range 0 (file-size path) 1MB)])
+                                  (SHA256 (read-bytes 1MB))))
+                tree-hash))
+      (displayln ok?))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -456,4 +472,4 @@
 ;;   (printf "Job ID ~s, created ~a, an ~a, ~a completed.\n"
 ;;           id date type (if completed? "IS" "is NOT"))
 ;;   #;(when (and completed? inventory?)
-;;     (show-inventory-job-output (get-job-output "test" id))))
+;;     (show-inventory-job-output (get-job-output "test" id)))
