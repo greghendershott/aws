@@ -225,7 +225,7 @@
 ;; Returns #t unless it throws an exception.
 (define/contract (upload-part name upload-id offset data)
   (string? string? exact-nonnegative-integer? bytes?  . -> . void)
-  (printf "upload-part ~a-~a\n" offset (+ offset (bytes-length data)))
+  (log-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
   (define m "PUT")
   (define u (string-append "http://" host "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
@@ -292,9 +292,7 @@
 (define/contract (create-archive/multipart-upload name desc part-size data)
   (string? string? valid-part-size? bytes? . -> . string?)
   (define id (start-multipart-upload name part-size desc))
-  ;;(printf "upload-id ~a\n" id)
   (define len (bytes-length data))
-  ;;(printf "part-size ~a total-len ~a\n" part-size len)
   (for ([i (in-range 0 len part-size)])
       (upload-part name id i (subbytes data i (min (+ i part-size) len))))
   (finish-multipart-upload name id len (tree-hash data)))
@@ -409,14 +407,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Produce a list of SHA256 hashes of each 1MB of the bytes
-(define (block-hashes d)
+(define/contract (block-hashes d)
+  (bytes? . -> . (listof SHA256?))
   (define total-len (bytes-length d))
   (for/list ([i (in-range 0 total-len 1MB)])
       (SHA256 (subbytes d i (min (+ i 1MB) total-len)))))
 
 ;; Given a list of data block hashes, "tree them up" for AWS Glacier
 (define/contract (hashes->tree xs)
-  ((listof bytes?) . -> . string?)
+  ((listof SHA256?) . -> . string?)
   (bytes->hex-string (reduce-pairs (lambda (a b)
                                      (if b
                                          (SHA256 (bytes-append a b))
@@ -445,11 +444,26 @@
 ;; (create-archive/multipart-upload "test" "desc" 1MB (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive-from-file "test" (build-path 'same "manual.scrbl"))
 ;; (request-inventory "test" "")
+
+;; (define/contract (show-inventory-job-output js)
+;;   (jsexpr? . -> . any)
+;;   (displayln "=== INVENTORY ===")
+;;   (for ([(k v) (in-hash js)])
+;;       (unless (equal? 'ArchiveList k)
+;;         (printf "~a: ~s\n" k v)))
+;;   (printf "Archives: ~a\n\n" (length (hash-ref js 'ArchiveList)))
+;;   (for ([h (in-list (hash-ref js 'ArchiveList))])
+;;       (displayln "--- Archive ---")
+;;     (for ([(k v) (in-hash h)])
+;;         (printf "~a: ~s\n" k v))
+;;     (newline))
+;;   (newline))
+
 ;; (for ([x (in-list (hash-ref (list-jobs "test") 'JobList '()))])
 ;;     (define id (hash-ref x 'JobId))
 ;;   (define date (hash-ref x 'CreationDate))
 ;;   (define completed? (hash-ref x 'Completed))
-;;   (printf "Job ~a created ~a is ~a completed.\n"
-;;           id date (if completed? "" "NOT"))
+;;   (printf "Job ~a created ~a is ~acompleted.\n"
+;;           id date (if completed? "" "NOT "))
 ;;   (when completed?
-;;     (displayln (get-job-output "test" id))))
+;;     (show-inventory-job-output (get-job-output "test" id))))
