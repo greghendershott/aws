@@ -137,14 +137,16 @@
   (void (sns `((Action "Unsubscribe")
                (SubscriptionArn ,subscription-arn)))))
 
-(define/contract/provide (publish arn msg #:subject [subject ""] #:json? [json? #f])
+(define/contract/provide (publish arn msg
+                                  #:subject [subject "No subject"]
+                                  #:json? [json? #f])
   ((string? string?)
-   (#:subject string? #:json? boolean?)
+   (#:subject (or/c #f string?) #:json? boolean?)
    . ->* . any)
   (sns (append `((Action "Publish")
                  (Message ,msg)
-                 (Subject ,subject)
-                 (TopicArn ,arn))
+                 (TopicArn ,arn)
+                 (Subject ,subject))
                 (if json?
                     `((MessageStructure "json"))
                     `()))))
@@ -168,11 +170,12 @@
                  (cons 'TopicArn arn))
    (check-equal? (subscribe (test/recipient) "email" arn)
                  "pending confirmation")
-   (publish arn "Test" #:subject "Test")
+     (publish arn "Test" #:subject "Test")
    (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
    (delete-topic arn)
-   (check-false (member? arn (list-topics))))
-  (void))
+   (check-false (member? arn (list-topics)))
+   (void))
+  )
 
  ;; Unfortunately it will be hard to write tests for most other SNS
  ;; functionality because they require a subscription to be confirmed
