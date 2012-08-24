@@ -121,7 +121,7 @@
   (define (aws-test-file name)
     (regexp-replace* 
      "\r\n"                             ;DOS files with CRLF
-     (file->string (build-path 'same "tests" "aws4_testsuite" name))
+     (file->string (build-path 'same "vendor" "aws4_testsuite" name))
      "\n"))
 
   (define heads (hash 'Date "Mon, 09 Sep 2011 23:36:00 GMT"
@@ -154,7 +154,7 @@
   (define (req->sreq base)
     ;; Most annoying part of this is parsing their original .req:
     (define xs
-      (file->lines (build-path 'same "tests" "aws4_testsuite"
+      (file->lines (build-path 'same "vendor" "aws4_testsuite"
                                (string-append base ".req"))))
     (define-values (method path)
       (match (car xs)
