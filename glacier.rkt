@@ -411,25 +411,25 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Produce a list of SHA256 hashes of each 1MB of the bytes
-(define/contract (block-hashes d)
+(define/contract (bytes->hashes b)
   (bytes? . -> . (listof SHA256?))
-  (define total-len (bytes-length d))
+  (define total-len (bytes-length b))
   (for/list ([i (in-range 0 total-len 1MB)])
-      (SHA256 (subbytes d i (min (+ i 1MB) total-len)))))
+      (SHA256 (subbytes b i (min (+ i 1MB) total-len)))))
 
-;; Given a list of data block hashes, "tree them up" for AWS Glacier
+;; Given a list of hashes make an x-amz-sha256-tree-hash
 (define/contract (hashes->tree xs)
   ((listof SHA256?) . -> . string?)
-  (bytes->hex-string (reduce-pairs (lambda (a b)
-                                     (if b
-                                         (SHA256 (bytes-append a b))
-                                         a))
-                                   xs
-                                   #f)))
+  (define (hoist a b) ;SHA256? (or/c SHA256? #f) -> SHA256?
+    (if b
+        (SHA256 (bytes-append a b))
+        a))
+  (bytes->hex-string (reduce-pairs hoist xs #f)))
 
-(define/contract (tree-hash d)
+;; Given bytes? make an x-amz-sha256-tree-hash
+(define/contract (tree-hash b)
   (bytes? . -> . string?)
-  (hashes->tree (block-hashes d)))
+  (hashes->tree (bytes->hashes b)))
 
 ;;(bytes->hex-string (tree-hash #"hi"))
 ;;(tree-hash (make-bytes (+ (* 3 1MB) 4)))
@@ -447,7 +447,10 @@
 ;; (create-archive "test" (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive/multipart-upload "test" "desc" 1MB (make-bytes (+ 3 (* 4 1MB))))
 ;; (create-archive-from-file "test" (build-path 'same "manual.scrbl"))
-;; (retrieve-inventory "test" "")
+
+;; (require (planet gh/aws/sns))
+;; (define sns-topic (car (list-topics)))
+;; (retrieve-inventory "test" "" sns-topic)
 
 ;; (define/contract (show-inventory-job-output js)
 ;;   (jsexpr? . -> . any)
@@ -471,5 +474,5 @@
 ;;   (define inventory? (equal? (hash-ref x 'Action "") "InventoryRetrieval"))
 ;;   (printf "Job ID ~s, created ~a, an ~a, ~a completed.\n"
 ;;           id date type (if completed? "IS" "is NOT"))
-;;   #;(when (and completed? inventory?)
-;;     (show-inventory-job-output (get-job-output "test" id)))
+;;   (when (and #f completed? inventory?)
+;;     (show-inventory-job-output (get-job-output "test" id))))
