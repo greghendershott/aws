@@ -184,7 +184,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Return the x-amz-archive-id
-(define/contract (create-archive name data desc)
+(define/contract (create-archive name desc data)
   (string? string? bytes?  . -> . string?)
   (define m "POST")
   (define u (string-append "http://" host "/-/vaults/" name "/archives"))
@@ -227,8 +227,7 @@
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
-                        (void (read-entity/bytes p h))
-                        #t)))
+                        (void (read-entity/bytes p h)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
