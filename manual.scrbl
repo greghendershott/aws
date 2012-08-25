@@ -3,6 +3,7 @@
 @(require planet/scribble
           (for-label racket)
           (for-label net/head)
+          (for-label json)
           (for-label (this-package-in cw))
           (for-label (this-package-in exn))
           (for-label (this-package-in keys))
@@ -1275,6 +1276,7 @@ Set the endpoint for the service. Defaults to @racket[(endpoint
 "monitoring.us-east-1.amazonaws.com" #t)].
 
 }
+
 @subsection{Contracts}
 
 @defthing[unit/c
@@ -1493,6 +1495,172 @@ time.
 ) (listof alarm-history?)]{
 
 Return the history for alarms meeting the criteria.
+
+}
+
+@; ----------------------------------------------------------------------------
+@section{Glacier (Archives)}
+
+@defmodule/this-package[glacier]
+
+Amazon's @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html" "overview" #:underline? #f].
+
+@subsection{Region}
+
+@defparam[region v string?]{
+
+Set the region. Defaults to @racket["us-east-1"].
+
+}
+
+@subsection{Vaults}
+
+@defproc[(create-vault
+[name string?]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-put.html" "Create a vault" #:underline? #f] and return its ID. Idempotent.
+
+}
+
+@defproc[(delete-vault
+[name string?]
+) void?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-delete.html" "Delete a vault" #:underline? #f]. Idempotent.
+
+}
+
+@defproc[(list-vaults
+) void?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vaults-get.html" "List vaults" #:underline? #f].
+
+}
+
+@defproc[(describe-vault
+[name string?]
+) jsexpr?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-get.html" "Describe a vault" #:underline? #f].
+
+}
+
+@subsection{Vault notifications}
+
+@defproc[(set-vault-notifications
+[name string?]
+[sns-topic string?]
+[inventory? boolean?]
+[archive? boolean?]
+) void?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-notifications-put.html" "Set a vault's notification configuration" #:underline? #f].
+
+}
+
+@defproc[(get-vault-notifications
+[name string?]
+) jsexpr?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-notifications-get.html" "Get a vault's notification configuration" #:underline? #f].
+
+}
+
+@defproc[(delete-vault-notifications
+[name string?]
+) void?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-notifications-delete.html"
+"Delete a vault's notification configuration" #:underline? #f].
+
+}
+
+@subsection{Archives}
+
+@defproc[(create-archive
+[vault-name string?]
+[archive-description string?]
+[data bytes?]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-archive-post.html"
+"Create an archive" #:underline? #f] containing the @racket[data] and return
+its archive ID.
+
+}
+
+
+@defproc[(create-archive-from-file
+[vault-name string?]
+[path path?]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-archive-post.html"
+"Create an archive" #:underline? #f] with data from a file and return its
+archive ID.
+
+}
+
+@defproc[(delete-archive
+[vault-name string?]
+[archive-id string?]
+) void?]{
+
+Delete an archive.
+
+}
+
+@subsection{Retrieval jobs}
+
+@defproc[(retrieve-inventory
+[vault-name string?]
+[job-description string?]
+[sns-topic (or/c string? #f) #f]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-initiate-job-post.html" "Initiate a job" #:underline? #f] to retrieve an archive's inventory, and return the job ID.
+
+}
+
+@defproc[(retrieve-archive
+[vault-name string?]
+[job-description string?]
+[sns-topic (or/c string? #f) #f]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-initiate-job-post.html" "Initiate a job" #:underline? #f] to retrieve an archive's data, and return the job ID.
+
+}
+
+
+@defproc[(list-jobs
+[vault-name string?]
+) jsexpr?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-jobs-get.html" "List jobs" #:underline? #f].
+
+}
+
+@defproc[(get-job-output
+[vault-name string?]
+[job-id string?]
+) (or/c jsexpr? bytes?)]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html" "Get the output of a job" #:underline? #f].
+
+}
+
+@defproc[(get-output-job-to-fiel
+[vault-name string?]
+[job-id string?]
+[path path?]
+[exists (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace)]
+) boolean?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html"
+"Get the output of an archive retrieval job" #:underline? #f] and put it in a
+file. Verifies that the output matches its SHA256 tree hash.
 
 }
 
