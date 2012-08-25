@@ -474,5 +474,5 @@
 ;;   (define inventory? (equal? (hash-ref x 'Action "") "InventoryRetrieval"))
 ;;   (printf "Job ID ~s, created ~a, an ~a, ~a completed.\n"
 ;;           id date type (if completed? "IS" "is NOT"))
-;;   (when (and #f completed? inventory?)
+;;   (when (and completed? inventory?)
 ;;     (show-inventory-job-output (get-job-output "test" id))))
