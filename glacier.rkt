@@ -45,13 +45,9 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization
-                                 m
-                                 u
-                                 h
-                                 #""
-                                 (region)
-                                 service))
+                                (aws-v4-authorization m u h #""
+                                                      (region)
+                                                      service))
                       (lambda (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))
@@ -113,6 +109,79 @@
                       (lambda (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define/contract (set-vault-notifications name sns inventory? archive?)
+  (string? string? boolean? boolean? . -> . void)
+  (unless (or inventory? archive?)
+    (error 'set-vault-notifications
+           "One of inventory? or archive? must be #t"))
+  (define m "PUT")
+  (define u (string-append "http://" host "/-/vaults/" name
+                           "/notification-configuration"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (define xs (append (if inventory? '("InventoryRetrievalCompleted") '())
+                     (if archive? '("ArchiveRetrievalCompleted") '())))
+  (define data (jsexpr->bytes (hasheq 'SNSTopic sns
+                                      'Events xs)))
+  (call/output-request "1.1"
+                       m
+                       u
+                       (lambda (out) (display data out))
+                       (bytes-length data)
+                       (dict-set h
+                                 'Authorization
+                                 (aws-v4-authorization m u h data
+                                                       (region) service))
+                      (lambda (p h)
+                        (check-response p h)
+                        (void (read-entity/bytes p h)))))
+
+(define/contract (get-vault-notifications name)
+  (string? . -> . jsexpr?)
+  (define m "GET")
+  (define u (string-append "http://" host "/-/vaults/" name
+                           "/notification-configuration"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (call/input-request "1.1"
+                      m
+                      u
+                      (dict-set h
+                                'Authorization
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
+                      (lambda (p h)
+                        (check-response p h)
+                        (read-entity/jsexpr p h))))
+
+(define/contract (delete-vault-notifications name)
+  (string? . -> . void)
+  (define m "DELETE")
+  (define u (string-append "http://" host "/-/vaults/" name
+                           "/notification-configuration"))
+  (define h (hash 'Host host
+                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'x-amz-glacier-version glacier-version
+                  ))
+  (call/input-request "1.1"
+                      m
+                      u
+                      (dict-set h
+                                'Authorization
+                                (aws-v4-authorization m u h #""
+                                                      (region) service))
+                      (lambda (p h)
+                        (check-response p h)
+                        (void (read-entity/bytes p h)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Return the x-amz-archive-id
 (define/contract (create-archive name data desc)
@@ -451,6 +520,11 @@
 ;; (require (planet gh/aws/sns))
 ;; (define sns-topic (car (list-topics)))
 ;; (retrieve-inventory "test" "" sns-topic)
+
+;; (require (planet gh/aws/sns))
+;; (define sns-topic (car (list-topics)))
+;; (set-vault-notifications "test" sns-topic #t #t)
+
 
 ;; (define/contract (show-inventory-job-output js)
 ;;   (jsexpr? . -> . any)
