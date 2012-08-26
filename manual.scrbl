@@ -1806,7 +1806,8 @@ Given @racket[xexpr], return the value of just the first element having tag
 @; ----------------------------------------------------------------------------
 @section{Unit tests}
 
-To run the @racket[rackunit] tests, run @tt{tests/run.rkt}.
+The @racket[rackunit] tests use the @racket[test] submodule feature added in
+Racket 5.3. To run all tests, use the shell command, @tt{raco test ./}.
 
 Be aware that some of the tests make actual requests to AWS. They may take
 awhile to complete. And to do so, the tests need some personally identifying
