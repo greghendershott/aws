@@ -12,8 +12,9 @@
 (define vault "examples.backup")
 
 (define (ensure-assets)
-  ;; Creating a domain on SDB is idempotent; harmless to do again.
+  ;; Creating a vault on Glacier is idempotent; harmless to do again.
   (create-vault vault)
+  ;; Creating a domain on SDB is idempotent; harmless to do again.
   (create-domain path->archive-domain)
   (create-domain archive->meta-domain))
 
@@ -41,7 +42,7 @@
                     (Path ,path/string)))
   (void))
 
-(define/contract (archive-directory path [sns #f])
+(define/contract (archive-directory path [sns-topic #f])
   ((path-string?) (string?) . ->* . void?)
   (printf "Ensuring Amazon SDB and Glacier resources are created ...\n")
   (ensure-assets)
@@ -51,17 +52,17 @@
       (unless (or (directory-exists? x)
                   (equal? #\. (string-ref (path->string x) 0)))
         (archive-file x)))
-  (when sns
-    (publish sns (format "Archive completed ~a." (seconds->gmt-string))))
+  (when sns-topic
+    (publish sns-topic (format "Archive completed ~a." (seconds->gmt-string))))
   (void))
 
 ;; For example let's archive the file in our tests dir.
 (define root-dir
   (path->string (simplify-path (path->complete-path (build-path 'up "tests")))))
 ;; Let's notify to our first SNS topic (if any)
-(define sns-topic (match (list-topics) [(list x rest ...) x][else ""]))
+(define sns-topic (match (list-topics) [(list x rest ...) x][else #f]))
 (archive-directory root-dir sns-topic)
 
 ;; Let's look at the information from SDB
 (select-hash (format "SELECT * FROM ~a" path->archive-domain))
-;;(select-hash (format "SELECT * FROM ~a" archive->meta-domain))
+(select-hash (format "SELECT * FROM ~a" archive->meta-domain))
