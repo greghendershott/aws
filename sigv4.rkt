@@ -2,8 +2,7 @@
 
 (require (planet gh/http)
          (planet gh/aws/keys)
-         file/sha1
-         "hmac-sha256.rkt")
+         (planet gh/sha))
          
 (define/contract (canonical-request method
                                     uri
@@ -24,7 +23,7 @@
                                 (string-downcase (symbol->string k)))
                             string<=?)
                       ";")
-         (bytes->hex-string (SHA256 body)))
+         (bytes->hex-string (sha256 body)))
    "\n"))
 
 (define (uri->path u)
@@ -40,7 +39,7 @@
    (list "AWS4-HMAC-SHA256"
          8601-date
          (credential-scope 8601-date region service)
-         (bytes->hex-string (SHA256 (string->bytes/utf-8 canonical-request))))
+         (bytes->hex-string (sha256 (string->bytes/utf-8 canonical-request))))
    "\n"))
 
 (define/contract (credential-scope 8601-date region service)
@@ -73,17 +72,17 @@
 (define/contract (signature string-to-sign 8601-date region service)
   (string? string? string? string? . -> . string?)
   (bytes->hex-string
-   (HMAC-SHA256 (derived-signing-key 8601-date region service)
+   (hmac-sha256 (derived-signing-key 8601-date region service)
                 (string->bytes/utf-8 string-to-sign))))
 
 (define/contract (derived-signing-key 8601-date region service)
   (string? string? string? . -> . bytes?)
-  (define k-date (HMAC-SHA256 (bytes-append #"AWS4"
+  (define k-date (hmac-sha256 (bytes-append #"AWS4"
                                             (string->bytes/utf-8 (private-key)))
                               (string->bytes/utf-8 (8601-date-only 8601-date))))
-  (define k-region (HMAC-SHA256 k-date (string->bytes/utf-8 region)))
-  (define k-service (HMAC-SHA256 k-region (string->bytes/utf-8 service)))
-  (define k-signing (HMAC-SHA256 k-service #"aws4_request"))
+  (define k-region (hmac-sha256 k-date (string->bytes/utf-8 region)))
+  (define k-service (hmac-sha256 k-region (string->bytes/utf-8 service)))
+  (define k-signing (hmac-sha256 k-service #"aws4_request"))
   k-signing)
 
 (define/contract (aws-v4-authorization method uri heads body
