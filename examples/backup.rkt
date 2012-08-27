@@ -1,6 +1,6 @@
 #lang racket
 
-;; Use Glacier for archival backups, and SDB to store the meta data.
+;; Use Glacier for archival backups, and SDB to store the metadata.
 
 (require (planet gh/aws/sdb)
          (planet gh/aws/sns)
@@ -33,13 +33,13 @@
   (printf "Updating Amazon Simple Database with metadata ...\n")
   (put-attributes path->archive-domain
                   path/string
-                  `((ArchiveId ,archive-id)))
+                  `([ArchiveId ,archive-id]))
   ;; Also store some info about this specific archive.
   (put-attributes archive->meta-domain
                   archive-id
-                  `((Size ,(number->string (file-size path)))
-                    (Date ,(seconds->gmt-8601-string))
-                    (Path ,path/string)))
+                  `([Size ,(number->string (file-size path))]
+                    [Date ,(seconds->gmt-8601-string)]
+                    [Path ,path/string]))
   (void))
 
 (define/contract (archive-directory path [sns-topic #f])
