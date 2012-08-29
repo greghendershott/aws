@@ -174,7 +174,8 @@ closed!
 
 @defmodule/this-package[s3]
 
-AWS S3 provides a fairly simple and REST-ful interface. Putting an object to S3
+@hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html"
+"S3"] provides a fairly simple and REST-ful interface. Putting an object to S3
 is a simple HTTP @tt{PUT} request. Getting an object is a simple @tt{GET}
 request. And so on. As a result, you may feel you don't need a lot of
 ``wrapper'' around this.
@@ -618,10 +619,11 @@ with a MIME type.
 
 @defmodule/this-package[sdb]
 
-SDB is a ``schema-less'' database. You should review the SDB docs to understand
-the basic concepts and names. For example an SDB @italic{domain} is like a SQL
-table, an SDB @italic{item} is like a SQL row, and an SDB @italic{item name} is
-like a SQL primary key value to unqiuely identify a row.
+@hyperlink["http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html"
+"SimpleDB"] is a ``schema-less'' database. You should review the SDB docs to
+understand the basic concepts and names. For example an SDB @italic{domain} is
+like a SQL table, an SDB @italic{item} is like a SQL row, and an SDB
+@italic{item name} is like a SQL primary key value to unqiuely identify a row.
 
 Instead of columns, each item has @italic{attributes}. Each attribute is a
 key/value hash. In other words, unlike a SQL column which has one value, each
@@ -967,8 +969,9 @@ In the examples below, the reason for using @racket[sleep] is that SDB has an
 
 @defmodule/this-package[ses]
 
-Please view the SES documentation to understand concepts like a verified
-sending adddress.
+Please refer to the
+@hyperlink["http://docs.amazonwebservices.com/ses/latest/DeveloperGuide/Welcome.html"
+"SES documentation"] to understand concepts like a verified sending adddress.
 
 @defparam[ses-endpoint v endpoint?]{
 
@@ -1089,8 +1092,10 @@ be able to support them by setting the @tt{Action} parameter.}
 
 @defmodule/this-package[sns]
 
-SNS (Simple Notification Service) lets you create topics to which notifications
-can be published. Each topic has zero or more subscriptions.
+
+@hyperlink["http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480"
+"SNS"] lets you create topics to which notifications can be published. Each
+topic has zero or more subscriptions.
 
 Subscriptions can be of various types of endpoints, such as email, SMS, or an
 HTTP @tt{POST} of a JSON-encoded message.
@@ -1185,6 +1190,8 @@ then @racket[message] must be valid JSON or SNS will return an error.
 
 @defmodule/this-package[sqs]
 
+@hyperlink["http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html" "SQS"] provides distributed queues.
+
 
 @defparam[sqs-endpoint v endpoint?]{
 
@@ -1259,8 +1266,10 @@ Change the visibility time of a message already in a queue. }
 
 @defmodule/this-package[cw]
 
-Among the Amazon Web Services, the CloudWatch API is the most quirky, least
-documented, and provides the fewest specific examples of making requests.
+Among the Amazon Web Services, the
+@hyperlink["http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html"
+"CloudWatch"] API is the most quirky, least documented, and provides the fewest
+specific examples of making requests.
 
 As a result, there are more likely to be mistakes or problems in this
 module. Your feedback or contributions to improve it are welcome.
@@ -1503,7 +1512,10 @@ Return the history for alarms meeting the criteria.
 
 @defmodule/this-package[glacier]
 
-Amazon's @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html" "overview" #:underline? #f].
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html"
+"Glacier"] provides storage for archiving. You can store objects less
+expensively than using S3. The trade-off is that it is very slow to retreive
+them.
 
 @subsection{Region}
 
