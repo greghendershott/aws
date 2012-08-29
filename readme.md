@@ -4,17 +4,25 @@ Overview
 Provides [Racket](http://www.racket-lang.org) support for many [Amazon
 Web Services](http://aws.amazon.com/documentation/):
 
-* S3 (Simple Storage Service)
-* SDB (Simple Database Service)
-* SES (Simple Email Service)
-* SNS (Simple Notification Service)
-* SQS (Simple Queue Service)
-* CloudWatch (monitoring)
-* Glacier (archiving). [1]
-* Authorization signature version 4.
+* [S3 storage](http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html).
 
-[1]: Glacier is brand-new as of 2012-08-22. Support here is still
-in-progress and not yet pushed to PLaneT.
+* [SimpleDB database](http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html).
+
+* [SES email](http://docs.amazonwebservices.com/ses/latest/DeveloperGuide/Welcome.html).
+
+* [SNS notification](http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480).
+
+* [SQS queues](http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html).
+
+* [CloudWatch monitoring](http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html).
+
+* [Glacier
+  archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html). _Amazon
+  just added Glacier around 2012-08-22.  My support here is a
+  work-in-progress and not yet pushed to PLaneT._
+
+* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).
+
 
 Documentation
 =============
@@ -34,11 +42,17 @@ Requirements
 
 * The access keys for an Amazon Web Services account.
 
-* This library requires my `http` library available on
+* My `http` library available on
   [Github](https://github.com/greghendershott/http) or
-  [PLaneT](http://planet.plt-scheme.org/display.ss?package=http.plt&owner=gh). You
-  should not need to install this manually. Racket's `(require (planet ...))`
-  should automatically install this the first time.
+  [PLaneT](http://planet.plt-scheme.org/display.ss?package=http.plt&owner=gh). 
+  You don't have to install this mannually as Racket's `(require (planet ...))`
+  should automatically install it.
+
+* My `sha` library available on
+  [Github](https://github.com/greghendershott/sha) or
+  [PLaneT](http://planet.plt-scheme.org/display.ss?package=sha.plt&owner=gh). 
+  You don't have to install this mannually as Racket's `(require (planet ...))`
+  should automatically install it.
 
 Unit tests
 ==========
