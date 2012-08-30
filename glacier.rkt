@@ -243,7 +243,8 @@
 (define/contract (start-multipart-upload name part-size desc)
   (string? valid-part-size? string?  . -> . string?)
   (define m "POST")
-  (define u (string-append "http://" host "/-/vaults/" name "/multipart-uploads"))
+  (define u (string-append "http://" host "/-/vaults/" name
+                           "/multipart-uploads"))
   (define h (hash 'Host host
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
