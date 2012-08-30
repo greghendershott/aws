@@ -192,6 +192,7 @@
   (define u (string-append "http://" host "/-/vaults/" name "/archives"))
   (define h (hash 'Host host
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'Expect "100-continue"
                   'Content-Length (bytes-length data)
                   'x-amz-glacier-version glacier-version
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
@@ -276,6 +277,7 @@
                            "/multipart-uploads/" upload-id))
   (define h (hash 'Host host
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                  'Expect "100-continue"
                   'x-amz-glacier-version glacier-version
                   'x-amz-part-size 1MB
                   'Content-Length (bytes-length data)
