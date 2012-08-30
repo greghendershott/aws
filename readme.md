@@ -17,11 +17,9 @@ Web Services](http://aws.amazon.com/documentation/):
 * [CloudWatch monitoring](http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html).
 
 * [Glacier
-  archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html). _Amazon
-  just added Glacier around 2012-08-22.  My support here is a
-  work-in-progress and not yet pushed to PLaneT._
+  archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html). _New in v1.3, 2012-08-30_
 
-* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).
+* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).  _New in v1.3, 2012-08-3_0
 
 
 Documentation
