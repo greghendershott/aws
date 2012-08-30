@@ -524,4 +524,35 @@
    (delete b+p)
    (delete-bucket (test/bucket))
    (void))
-   )
+
+  (test-case
+   "100-continue"
+   ;; Confirm that the gh/http collection's handling of 100-continue is
+   ;; working as expected with S3.
+   ;;
+   ;; Make a PUT request with a Content-Length vastly bigger than S3
+   ;; will accept. Check that S3 responds as expected with "400 Bad
+   ;; Request". Then check that our `writer' proc was NOT called. (Don't
+   ;; worry, if it is called, we don't actually write anything, much
+   ;; less the huge number of bytes.)
+   (ensure-have-keys)
+   (create-bucket (test/bucket))
+   (define writer-called? #f)
+   (check-exn
+    exn:fail:aws?
+    (lambda ()
+      (put (string-append (test/bucket) "/" (test/path))
+           (lambda (out)
+             ;; Set flag that we were asked to write something.
+             ;; (But for this test, don't actually write anything.)
+             (set! writer-called? #t))
+           ;; Content-Length that should elicit 400 error
+           (expt 2 64) ;16,384 petabytes might be too large
+           "text/plain"
+           (lambda (in h)
+             (check-response in h) ;Should raise exn:fail:aws due to 400
+             (port->bytes in)))))
+   (check-false writer-called?)
+   (delete-bucket (test/bucket))
+   (void))
+  )
