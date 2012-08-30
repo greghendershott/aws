@@ -95,3 +95,8 @@
 
 (def/prov test/namespace)
 (def/prov test/metric)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; used by glacier.rkt
+
+(def/prov test/vault)

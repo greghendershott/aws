@@ -32,7 +32,8 @@
 
 (define 1MB (* 1024 1024))
 
-(define (create-vault name)
+(define/contract (create-vault name)
+  (string? . -> . (or/c #t exn:fail:aws?))
   (define m "PUT")
   (define u (string-append "http://" host "/-/vaults/" name))
   (define h (hash 'Host host
@@ -52,7 +53,8 @@
                         (void (read-entity/bytes p h))
                         #t)))
 
-(define (delete-vault name)
+(define/contract (delete-vault name)
+  (string? . -> . (or/c #t exn:fail:aws?))
   (define m "DELETE")
   (define u (string-append "http://" host "/-/vaults/" name))
   (define h (hash 'Host host
@@ -91,7 +93,8 @@
                         (check-response p h)
                         (hash-ref (read-entity/jsexpr p h) 'VaultList))))
 
-(define (describe-vault name)
+(define/contract (describe-vault name)
+  (string? . -> . jsexpr?)
   (define m "GET")
   (define u (string-append "http://" host "/-/vaults/" name))
   (define h (hash 'Host host
@@ -112,7 +115,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract (set-vault-notifications name sns inventory? archive?)
-  (string? string? boolean? boolean? . -> . void)
+  (string? string? boolean? boolean? . -> . (or/c #t exn:fail:aws?))
   (unless (or inventory? archive?)
     (error 'set-vault-notifications
            "One of inventory? or archive? must be #t"))
@@ -138,7 +141,7 @@
                                                        (region) service))
                       (lambda (p h)
                         (check-response p h)
-                        (void (read-entity/bytes p h)))))
+                        #t)))
 
 (define/contract (get-vault-notifications name)
   (string? . -> . jsexpr?)
@@ -209,7 +212,8 @@
                          (void (read-entity/jsexpr p h))
                          (extract-field "x-amz-archive-id" h))))
 
-(define (delete-archive vault archive-id)
+(define/contract (delete-archive vault archive-id)
+  (string? string? . -> . (or/c #t exn:fail:aws?))
   (define m "DELETE")
   (define u (string-append "http://" host "/-/vaults/" vault
                            "/archives/" archive-id))
@@ -226,7 +230,7 @@
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
-                        (void (read-entity/bytes p h)))))
+                        #t)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -498,30 +502,8 @@
   (bytes? . -> . string?)
   (hashes->tree (bytes->hashes b)))
 
-;;(bytes->hex-string (tree-hash #"hi"))
-;;(tree-hash (make-bytes (+ (* 3 1MB) 4)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ;; Examples
-
-;; (create-vault "test")
-;; (list-vaults)
-;; (delete-vault "test")
-;; (list-vaults)
-;; (define id (create-archive "test" #"Hello, world"))
-;; (delete-archive "test" id)
-;; (create-archive "test" (make-bytes (+ 3 (* 4 1MB))))
-;; (create-archive/multipart-upload "test" "desc" 1MB (make-bytes (+ 3 (* 4 1MB))))
-;; (create-archive-from-file "test" (build-path 'same "manual.scrbl"))
-
-;; (require (planet gh/aws/sns))
-;; (define sns-topic (car (list-topics)))
-;; (retrieve-inventory "test" "" sns-topic)
-
-;; (require (planet gh/aws/sns))
-;; (define sns-topic (car (list-topics)))
-;; (set-vault-notifications "test" sns-topic #t #t)
 
 
 ;; (define/contract (show-inventory-job-output js)
@@ -549,4 +531,55 @@
 ;;   (when (and completed? inventory?)
 ;;     (show-inventory-job-output (get-job-output "test" id))))
 
-(require rackunit)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(module+ test
+  (require rackunit
+           "tests/data.rkt"
+           (planet gh/aws/sns))
+
+  (define vault (test/vault))
+
+  (define topic-arn (create-topic (test/topic)))
+
+  (check-true (create-vault vault))
+  (check-true (for/or ([x (in-list (list-vaults))])
+                  (define name (hash-ref x 'VaultName #f))
+                (and name (string=? name vault))))
+
+  (define id #f)
+
+  (check-not-exn
+   (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
+  (check-true (delete-archive vault id))
+
+  (check-not-exn
+   (lambda ()
+     (set! id (create-archive vault "description"
+                              (make-bytes (+ 3 (* 4 1MB)))))))
+  (check-true (delete-archive vault id))
+
+  (check-not-exn
+   (lambda ()
+     (set! id (create-archive/multipart-upload vault "description" 1MB
+                                               (make-bytes (+ 3 (* 4 1MB)))))))
+  (check-true (delete-archive vault id))
+
+  (check-not-exn
+   (lambda ()
+     (set! id (create-archive-from-file vault
+                                        (build-path 'same "manual.scrbl")))))
+  (check-true (delete-archive vault id))
+
+  ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
+  ;; complete, so it's impractical for our unit test to check the SNS
+  ;; topic. Furthermore, retrieve-inventory may fail during the first 24
+  ;; hours after a vault is created, because Amazon Glacier hasn't
+  ;; created an initial inventory yet. Gah.
+
+  ;; (define job-id (retrieve-inventory vault "" topic-arn))
+  ;; (list-jobs)
+
+  (check-not-exn
+   (lambda () (set-vault-notifications vault topic-arn #t #t)))
+  )

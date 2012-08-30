@@ -49,3 +49,8 @@ test/queue = TestQueue
 # not using in production!
 test/namespace = testnamespace
 test/metric = testmetric
+
+# Name of a test vault on Glacier.
+# THIS VAULT WILL BE CREATED (IF IF DOESN'T ALREADY EXIST) AND TEST
+# ARCHIVES WILL BE CREATED AND DELETED IN IT.
+test/vault = testvault
