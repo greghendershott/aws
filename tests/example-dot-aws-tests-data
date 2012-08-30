@@ -1,9 +1,12 @@
+# If you are only using this collection, then you don't need to run
+# the unit tests and you may disregard this file.
+#
 # Supply a file in this format as ~/.aws-tests-data.
 # You should change the values to those suitable for your AWS account
 # and email addresses.
 
 # Name of a test bucket on S3.
-# This bucket will be created and deleted during the test!
+# WARNING: THIS BUCKET WILL BE CREATED AND DELETED DURING THE TEST!!!
 # Remember that bucket names are global (shared among all S3 users)
 # therefore you may want to pick a name with your domain name in it.
 # Do NOT use leading / in the name.
@@ -24,21 +27,21 @@ test/unverified-sender = <email-address>
 test/recipient = <email-address>
 
 # Name of a test domain (i.e. "table") on SDB.
-# This domain will get munged -- data added/deleted, and in fact the
-# entire domain will be created/deleted -- so pick an SDB domain name
-# you're not using in production!
+# THIS DOMAIN WILL GET MUNGED -- DATA ADDED/DELETED, AND IN FACT THE
+# ENTIRE DOMAIN WILL BE CREATED/DELETED -- SO PICK AN SDB DOMAIN NAME
+# YOU'RE NOT USING IN PRODUCTION!
 test/domain = TestDomain
 
 # Name of a test topic with SNS
-# This topic will get munged -- data added/deleted, and in fact the
-# entire topic will be created/deleted -- so pick an SDB topic name
-# you're not using in production!
+# THIS TOPIC WILL GET MUNGED -- DATA ADDED/DELETED, AND IN FACT THE
+# ENTIRE TOPIC WILL BE CREATED/DELETED -- SO PICK AN SDB TOPIC NAME
+# YOU'RE NOT USING IN PRODUCTION!
 test/topic = TestTopic
 
 # Name of a test queue with SNS
-# This queue will get munged -- messages added/removed, and in fact
-# the entire queue will be created/deleted -- so pick an SQS queue
-# name you're not using in production!
+# THIS QUEUE WILL GET MUNGED -- MESSAGES ADDED/REMOVED, AND IN FACT
+# THE ENTIRE QUEUE WILL BE CREATED/DELETED -- SO PICK AN SQS QUEUE
+# NAME YOU'RE NOT USING IN PRODUCTION!
 test/queue = TestQueue
 
 # Name of a namespace and metric with CloudWatch
