@@ -1,11 +1,10 @@
 #lang racket
 
 (require (planet gh/http)
+         (planet gh/sha)
          json
-         file/sha1
          net/head
          "exn.rkt"
-         "hmac-sha256.rkt"
          "keys.rkt"
          "util.rkt"
          "sigv4.rkt"
@@ -192,7 +191,7 @@
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'Content-Length (bytes-length data)
                   'x-amz-glacier-version glacier-version
-                  'x-amz-content-sha256 (bytes->hex-string (SHA256 data))
+                  'x-amz-content-sha256 (bytes->hex-string (sha256 data))
                   'x-amz-sha256-tree-hash (tree-hash data)
                   'x-amz-archive-description desc
                   ))
@@ -280,7 +279,7 @@
                   'Content-Range (format "bytes ~a-~a/*"
                                          offset
                                          (sub1 (+ offset (bytes-length data))))
-                  'x-amz-content-sha256 (bytes->hex-string (SHA256 data))
+                  'x-amz-content-sha256 (bytes->hex-string (sha256 data))
                   'x-amz-sha256-tree-hash (tree-hash data)
                   ))
   (call/output-request "1.1"
@@ -347,7 +346,7 @@
          [else
           (upload-part vault id i b)
           (loop (+ i 1MB)
-                (cons (SHA256 b) xs))])))))
+                (cons (sha256 b) xs))])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -467,7 +466,7 @@
     (lambda ()
       (define ok?
         (equal? (hashes->tree (for/list ([i (in-range 0 (file-size path) 1MB)])
-                                  (SHA256 (read-bytes 1MB))))
+                                  (sha256 (read-bytes 1MB))))
                 tree-hash))
       (displayln ok?))))
 
@@ -480,17 +479,17 @@
 
 ;; Produce a list of SHA256 hashes of each 1MB of the bytes
 (define/contract (bytes->hashes b)
-  (bytes? . -> . (listof SHA256?))
+  (bytes? . -> . (listof sha256?))
   (define total-len (bytes-length b))
   (for/list ([i (in-range 0 total-len 1MB)])
-      (SHA256 (subbytes b i (min (+ i 1MB) total-len)))))
+      (sha256 (subbytes b i (min (+ i 1MB) total-len)))))
 
 ;; Given a list of hashes make an x-amz-sha256-tree-hash
 (define/contract (hashes->tree xs)
-  ((listof SHA256?) . -> . string?)
-  (define (hoist a b) ;SHA256? (or/c SHA256? #f) -> SHA256?
+  ((listof sha256?) . -> . string?)
+  (define (hoist a b) ;sha256? (or/c sha256? #f) -> sha256?
     (if b
-        (SHA256 (bytes-append a b))
+        (sha256 (bytes-append a b))
         a))
   (bytes->hex-string (reduce-pairs hoist xs #f)))
 
@@ -549,3 +548,5 @@
 ;;           id date type (if completed? "IS" "is NOT"))
 ;;   (when (and completed? inventory?)
 ;;     (show-inventory-job-output (get-job-output "test" id))))
+
+(require rackunit)
