@@ -561,7 +561,7 @@ with a MIME type.
 
 @subsection{S3 examples}
 
-@codeblock{
+@codeblock0{
 (require (planet gh/aws/keys)
          (planet gh/aws/s3))
 
@@ -888,9 +888,10 @@ Examples:
 @subsection{SDB Examples}
 
 In the examples below, the reason for using @racket[sleep] is that SDB has an
-``eventual consistency'' model.
+``eventual consistency'' model. As a result, there may be a short delay before
+the values we set are available to get.
 
-@codeblock{
+@codeblock0{
 (require (planet gh/aws/keys)
          (planet gh/aws/sdb))
 
@@ -1529,24 +1530,37 @@ Set the region. Defaults to @racket["us-east-1"].
 
 @defproc[(create-vault
 [name string?]
-) string?]{
+) (or/c #t exn:fail:aws?)]{
 
-@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-put.html" "Create a vault" #:underline? #f] and return its ID. Idempotent.
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-put.html"
+"Create a vault" #:underline? #f] and return @racket[#t] or raise
+@racket[exn:aws:fail?]. Idempotent.
 
 }
 
 @defproc[(delete-vault
 [name string?]
-) void?]{
+) (or/c #t exn:fail:aws?)]{
 
-@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-delete.html" "Delete a vault" #:underline? #f]. Idempotent.
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-delete.html" "Delete a vault" #:underline? #f] and return @racket[#t] or raise
+@racket[exn:aws:fail?]. Idempotent.
 
 }
 
 @defproc[(list-vaults
-) void?]{
+) jsexpr?]{
 
-@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vaults-get.html" "List vaults" #:underline? #f].
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vaults-get.html" "List vaults" #:underline? #f] in a @racket[jsexpr?].
+
+@codeblock{
+> (list-vaults)
+'(#hasheq((VaultName . "testvault")
+          (CreationDate . "2012-08-30T12:29:37.200Z")
+          (LastInventoryDate . null)
+          (NumberOfArchives . 0)
+          (SizeInBytes . 0)
+          (VaultARN . "arn:aws:glacier:us-east-1:203585791165:vaults/testvault")))
+}
 
 }
 
@@ -1554,7 +1568,7 @@ Set the region. Defaults to @racket["us-east-1"].
 [name string?]
 ) jsexpr?]{
 
-@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-get.html" "Describe a vault" #:underline? #f].
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-get.html" "Describe a vault" #:underline? #f] in a @racket[jsexpr?].
 
 }
 
@@ -1565,7 +1579,7 @@ Set the region. Defaults to @racket["us-east-1"].
 [sns-topic string?]
 [inventory? boolean?]
 [archive? boolean?]
-) void?]{
+) (or/c #t exn:fail:aws?)]{
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-notifications-put.html" "Set a vault's notification configuration" #:underline? #f].
 
@@ -1617,7 +1631,7 @@ archive ID.
 @defproc[(delete-archive
 [vault-name string?]
 [archive-id string?]
-) void?]{
+) (or/c #t exn:fail:aws?)]{
 
 Delete an archive.
 
@@ -1659,11 +1673,14 @@ Delete an archive.
 [job-id string?]
 ) (or/c jsexpr? bytes?)]{
 
-@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html" "Get the output of a job" #:underline? #f].
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html"
+"Get the output of a job" #:underline? #f]. If the @tt{Content-Type} of the
+response is @tt{application/json}, return the result as a @racket[jsexpr?],
+otherwise return it as @racket[bytes?].
 
 }
 
-@defproc[(get-output-job-to-fiel
+@defproc[(get-output-job-to-file
 [vault-name string?]
 [job-id string?]
 [path path?]
@@ -1672,7 +1689,8 @@ Delete an archive.
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html"
 "Get the output of an archive retrieval job" #:underline? #f] and put it in a
-file. Verifies that the output matches its SHA256 tree hash.
+file. Return a @racket[boolean?] whether the output matches its
+@tt{x-amz-sha256-tree-hash}.
 
 }
 
@@ -1680,7 +1698,7 @@ file. Verifies that the output matches its SHA256 tree hash.
 
 This example can be found in @tt{examples/backup.rkt}.
 
-@codeblock{
+@codeblock0{
 #lang racket
 
 ;; Use Glacier for archival backups, and SDB to store the metadata.
