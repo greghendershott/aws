@@ -208,6 +208,12 @@
      [(empty? (cdr xs)) (car xs)]         ;reduced to one, the answer
      [else (reduce-pairs f xs missing-value)])))
 
+;; Much like `hash' lets you supply the pairs as a flat list, `alist'
+;; lets you do so for an association list. Saves some tedious typing
+;; of parens and dots.
+(define/provide (alist . xs)
+  (fold-pairs cons xs))
+
 (module+ test
   (require rackunit)
   (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
