@@ -1,7 +1,7 @@
 #lang racket
 
 (require net/base64
-         web-server/stuffers/hmac-sha1
+         (planet gh/sha)
          "util.rkt")
 
 ;; These parameters hold the AWS keys. Set them before using functions
@@ -47,10 +47,18 @@
                           "Tip: `(read-keys)' will read them "
                           "from a ~~/.aws-keys file."))))
 
-(define/contract/provide (sha1-encode str)
-  (string? . -> . string?)
+(define/contract (shaX-encode str f)
+  (string? (bytes? bytes? . -> . bytes?) . -> . string?)
   (match (bytes->string/utf-8
-          (base64-encode (HMAC-SHA1 (string->bytes/utf-8 (private-key))
-                                    (string->bytes/utf-8 str))))
+          (base64-encode (f (string->bytes/utf-8 (private-key))
+                            (string->bytes/utf-8 str))))
     [(regexp #rx"^(.*)\r\n$" (list _ x)) x] ;kill \r\n added by base64-encode
     [s s]))
+
+(define/contract/provide (sha1-encode str)
+  (string? . -> . string?)
+  (shaX-encode str hmac-sha1))
+
+(define/contract/provide (sha256-encode str)
+  (string? . -> . string?)
+  (shaX-encode str hmac-sha256))
