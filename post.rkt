@@ -26,7 +26,7 @@
        [503
         (if (<= try 5)
             (let ([sleep-time (sqr try)])   ;wait longer each time
-              (log-info (format "SDB returned 503. Try ~a in ~a secs."
+              (log-info (format "AWS returned 503. Try ~a in ~a secs."
                                 (add1 try) sleep-time))
               (sleep sleep-time)
               (post-with-retry uri xs-post-data heads (add1 try)))
