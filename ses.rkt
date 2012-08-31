@@ -161,8 +161,8 @@
   (hash 'X-Amzn-Authorization
         (string-append "AWS3-HTTPS AWSAccessKeyId="
                        (public-key)
-                       ",Algorithm=HmacSHA1,Signature="
-                       (sha1-encode date-str))))
+                       ",Algorithm=HmacSHA256,Signature="
+                       (sha256-encode date-str))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; test

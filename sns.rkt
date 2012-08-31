@@ -20,7 +20,7 @@
   (ensure-have-keys)
   (define common-params
     `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA1")
+      (SignatureMethod "HmacSHA256")
       (SignatureVersion "2")
       (Timestamp ,(timestamp))
       (Version "2010-03-31")))
@@ -33,7 +33,7 @@
                    (endpoint->host:port (sns-endpoint)) "\n"
                    "/" "\n"
                    (dict->form-urlencoded all-params)))
-  (define signature (sha1-encode str-to-sign))
+  (define signature (sha256-encode str-to-sign))
   (define signed-params (append all-params `((Signature ,signature))))
   (define qp (dict->form-urlencoded signed-params))
   (define uri (endpoint->uri (sns-endpoint) (string-append "/?" qp)))

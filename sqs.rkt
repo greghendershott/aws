@@ -29,7 +29,7 @@
   (define-values (host path) (uri->host&path q-uri))
   (define common-params
     `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA1")
+      (SignatureMethod "HmacSHA256")
       (SignatureVersion "2")
       (Timestamp ,(timestamp))
       (Version "2011-10-01")))
@@ -42,7 +42,7 @@
                    host "\n"
                    path "\n"
                    (dict->form-urlencoded all-params)))
-  (define signature (sha1-encode str-to-sign))
+  (define signature (sha256-encode str-to-sign))
   (define signed-params (append all-params `((Signature ,signature))))
   (define head
     (hash 'Content-Type "application/x-www-form-urlencoded; charset=utf-8"))

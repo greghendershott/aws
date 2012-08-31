@@ -186,7 +186,7 @@
   (ensure-have-keys)
   (define common-params
     `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA1")
+      (SignatureMethod "HmacSHA256")
       (SignatureVersion "2")
       (Timestamp ,(timestamp))
       (Version "2009-04-15")))
@@ -199,7 +199,7 @@
                    (endpoint->host:port (sdb-endpoint)) "\n"
                    "/" "\n"
                    (dict->form-urlencoded all-params)))
-  (define signature (sha1-encode str-to-sign))
+  (define signature (sha256-encode str-to-sign))
   (define signed-params (append all-params `((Signature ,signature))))
   (define header
     (hash 'Content-Type "application/x-www-form-urlencoded; charset=utf-8"))
