@@ -7,9 +7,6 @@
          "exn.rkt"
          "util.rkt")
 
-;;; Some functions used by both SQS and SDB
-;;; This module probably needs a better name/organization.
-
 (define/contract/provide (post-with-retry uri xs-post-data heads [try 1])
   ((string? dict? dict?)
    (exact-positive-integer?)

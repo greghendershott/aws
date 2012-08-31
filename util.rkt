@@ -215,13 +215,15 @@
   (fold-pairs cons xs))
 
 (module+ test
-  (require rackunit)
-  (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
-  (check-equal? (fold-pairs cons '(1 2 3))     '((1 . 2) (3 . #f)))
-  (check-equal? (fold-pairs cons '(1 2 3)   4) '((1 . 2) (3 . 4)))
-  (check-equal? (fold-pairs cons '(1 2 3 4) 5) '((1 . 2) (3 . 4)))
-  (check-equal? (reduce-pairs + '(1 2 3 4)) 10)
-  (check-equal? (reduce-pairs + '(1 2 3) 4) 10)
-  (check-equal? (reduce-pairs + '(1) 0) 1)
-  (check-exn exn:fail? (lambda () (reduce-pairs + '())))
-  )
+  (require "run-suite.rkt")
+  (define/run-test-suite
+   "util.rkt"
+   (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
+   (check-equal? (fold-pairs cons '(1 2 3))     '((1 . 2) (3 . #f)))
+   (check-equal? (fold-pairs cons '(1 2 3)   4) '((1 . 2) (3 . 4)))
+   (check-equal? (fold-pairs cons '(1 2 3 4) 5) '((1 . 2) (3 . 4)))
+   (check-equal? (reduce-pairs + '(1 2 3 4)) 10)
+   (check-equal? (reduce-pairs + '(1 2 3) 4) 10)
+   (check-equal? (reduce-pairs + '(1) 0) 1)
+   (check-exn exn:fail? (lambda () (reduce-pairs + '())))
+   ))

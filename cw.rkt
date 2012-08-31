@@ -461,79 +461,81 @@
                        #:dimensions `((InstanceId "i-cfeb8ba4")) )
 
 (module+ test
-  (require rackunit)
-  (require "tests/data.rkt")
+  (require "run-suite.rkt")
 
-  (test-case
-   "describe-alarms"
-   (define xs (describe-alarms))
-   (check-equal? (describe-alarms #:alarm-names (map alarm-name xs))
-                 xs))
+  (define/run-test-suite
+   "cw.rkt"
+   (test-case
+    "describe-alarms"
+    (define xs (describe-alarms))
+    (check-equal? (describe-alarms #:alarm-names (map alarm-name xs))
+                  xs))
 
-  (test-case
-   "put/list/get metric data"
-   (define test-unit 'Percent)
-   (define test-dimensions `((FakeDimensionName "FakeDimensionValue")))
+   (test-case
+    "put/list/get metric data"
+    (define test-unit 'Percent)
+    (define test-dimensions `((FakeDimensionName "FakeDimensionValue")))
 
-   (define end (current-seconds))
-   (define beg (- end (* 60 101)))        ;101 mintutes earlier
-   (define xs-put
-     (for/list ([n (in-range 0 101 1)]
-                [sc (in-range beg end 60)])
-         (datum (test/metric)
-                n
-                #f #f #f #f
-                test-unit
-                sc
-                test-dimensions)))
+    (define end (current-seconds))
+    (define beg (- end (* 60 101)))        ;101 mintutes earlier
+    (define xs-put
+      (for/list ([n (in-range 0 101 1)]
+                 [sc (in-range beg end 60)])
+          (datum (test/metric)
+                 n
+                 #f #f #f #f
+                 test-unit
+                 sc
+                 test-dimensions)))
 
-   ;; CW doesn't want > 20 at once. So do in batches of 20, which is
-   ;; good to exercise our handling of that.
-   (let loop ([xs xs-put])
-     (define len (length xs))
-     (define this (min len 20))
-     (define next (- len this))
-     (unless (zero? this)
-       (put-metric-data (test/namespace) (take xs this))
-       (unless (zero? next)
-         (loop (take-right xs next)))))
+    ;; CW doesn't want > 20 at once. So do in batches of 20, which is
+    ;; good to exercise our handling of that.
+    (let loop ([xs xs-put])
+      (define len (length xs))
+      (define this (min len 20))
+      (define next (- len this))
+      (unless (zero? this)
+        (put-metric-data (test/namespace) (take xs this))
+        (unless (zero? next)
+          (loop (take-right xs next)))))
 
-   ;; First time, may take awhile to show up
-   (let loop ([tries 8])
-     (unless (zero? tries)
-       (when (empty? (list-metrics #:namespace (test/namespace)))
-         (sleep 15)
-         (loop (sub1 tries)))))
+    ;; First time, may take awhile to show up
+    (let loop ([tries 8])
+      (unless (zero? tries)
+        (when (empty? (list-metrics #:namespace (test/namespace)))
+          (sleep 15)
+          (loop (sub1 tries)))))
 
-   (define m (list (metric (test/metric) (test/namespace) '())))
-   (check-equal? (list-metrics #:namespace (test/namespace)) m)
-   (check-equal? (list-metrics #:metric-name (test/metric)) m)
+    (define m (list (metric (test/metric) (test/namespace) '())))
+    (check-equal? (list-metrics #:namespace (test/namespace)) m)
+    (check-equal? (list-metrics #:metric-name (test/metric)) m)
 
-   (define xs-get
-     (get-metric-statistics #:metric-name (test/metric)
-                            #:namespace (test/namespace)
-                            #:unit test-unit
-                            #:statistics '(Sum Average Minimum Maximum
-                                               SampleCount)
-                            #:period 60
-                            #:start-time (- (current-seconds) (* 24 60 60))
-                            #:end-time (current-seconds)
-                            ;; #:dimensions test-dimensions
-                            ))
-   (check-true (not (empty? xs-get)))
-   (check-equal? (remove-duplicates (map datum-metric-name xs-get))
-                 (list (test/metric)))
-   (check-equal? (remove-duplicates (map datum-unit xs-get))
-                 (list test-unit))
-   ;; datum-value should always be #f when returned from
-   ;; get-metric-statistics
-   (check-equal? (remove-duplicates (map datum-value xs-get))
-                 (list #f))
-   ;; We specified all the statistics in #:statistics above, so make
-   ;; sure all are non-#f
-   (check-not-equal? (remove-duplicates (append (map datum-min xs-get)
-                                                (map datum-max xs-get)
-                                                (map datum-sum xs-get)
-                                                (map datum-sample-count xs-get)))
-                     (list #f)))
-  )
+    (define xs-get
+      (get-metric-statistics #:metric-name (test/metric)
+                             #:namespace (test/namespace)
+                             #:unit test-unit
+                             #:statistics '(Sum Average Minimum Maximum
+                                                SampleCount)
+                             #:period 60
+                             #:start-time (- (current-seconds) (* 24 60 60))
+                             #:end-time (current-seconds)
+                             ;; #:dimensions test-dimensions
+                             ))
+    (check-true (not (empty? xs-get)))
+    (check-equal? (remove-duplicates (map datum-metric-name xs-get))
+                  (list (test/metric)))
+    (check-equal? (remove-duplicates (map datum-unit xs-get))
+                  (list test-unit))
+    ;; datum-value should always be #f when returned from
+    ;; get-metric-statistics
+    (check-equal? (remove-duplicates (map datum-value xs-get))
+                  (list #f))
+    ;; We specified all the statistics in #:statistics above, so make
+    ;; sure all are non-#f
+    (check-not-equal? (remove-duplicates (append
+                                          (map datum-min xs-get)
+                                          (map datum-max xs-get)
+                                          (map datum-sum xs-get)
+                                          (map datum-sample-count xs-get)))
+                      (list #f)))
+   ))

@@ -155,28 +155,29 @@
 ;; test
 
 (module+ test
-  (require rackunit
-           "tests/data.rkt")
+  (require "run-suite.rkt")
 
   (define (member? x xs)
     (not (not (member x xs))))
 
-  (test-case
-   "sns"
-   (read-keys)
-   (define arn (create-topic (test/topic)))
-   (check-true (member? arn (list-topics)))
-   (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
-                 (cons 'TopicArn arn))
-   (check-equal? (subscribe (test/recipient) "email" arn)
-                 "pending confirmation")
-     (publish arn "Test" #:subject "Test")
-   (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
-   (delete-topic arn)
-   (check-false (member? arn (list-topics)))
-   (void))
-  )
+  (define/run-test-suite
+   "sns.rkt"
+   (test-case
+    "sns"
+    (read-keys)
+    (define arn (create-topic (test/topic)))
+    (check-true (member? arn (list-topics)))
+    (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
+                  (cons 'TopicArn arn))
+    (check-equal? (subscribe (test/recipient) "email" arn)
+                  "pending confirmation")
+    (publish arn "Test" #:subject "Test")
+    (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
+    (delete-topic arn)
+    (check-false (member? arn (list-topics)))
+    (void))
+   ))
 
- ;; Unfortunately it will be hard to write tests for most other SNS
- ;; functionality because they require a subscription to be confirmed
- ;; by the recipient.
+;; Unfortunately it will be hard to write tests for most other SNS
+;; functionality because they require a subscription to be confirmed
+;; by the recipient.

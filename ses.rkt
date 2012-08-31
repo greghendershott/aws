@@ -168,19 +168,8 @@
 ;; test
 
 (module+ test
-  (require rackunit
-           "tests/data.rkt")
+  (require "run-suite.rkt")
 
-  (test-case
-   "miscellaneous"
-   (check-true (list? (list-verified-email-addresses)))
-   (check-true (send-quota? (get-send-quota)))
-   (check-true (list? (get-send-statistics)))
-   (send-email #:from (test/verified-sender)
-               #:to (list (test/recipient))
-               #:subject "test good address"
-               #:body "test good address"))
-  
   (define-syntax-rule (400-error? code message expr)
     (check-true
      (with-handlers
@@ -192,18 +181,30 @@
        ;; We expect expr to raise an exception. Return #f if it doesn't
        (begin expr #f))))
 
-  (test-case
-   "400 errors"
-   (400-error? "InvalidParameterValue"
-               "Domain ends with dot"
-               (send-email #:from (test/verified-sender)
-                           #:to (list (string-append (test/recipient) "."))
-                           #:subject "test bad address"
-                           #:body "test bad address")))
-  (400-error? "MessageRejected"
-              "Email address is not verified."
-              (send-email #:from (test/unverified-sender)
-                          #:to (list (test/recipient))
-                          #:subject "test unverified sender"
-                          #:body "test unverified sender"))
-  (void))
+  (define/run-test-suite
+   "ses.rkt"
+   (test-case
+    "miscellaneous"
+    (check-true (list? (list-verified-email-addresses)))
+    (check-true (send-quota? (get-send-quota)))
+    (check-true (list? (get-send-statistics)))
+    (send-email #:from (test/verified-sender)
+                #:to (list (test/recipient))
+                #:subject "test good address"
+                #:body "test good address"))
+   
+   (test-case
+    "400 errors"
+    (400-error? "InvalidParameterValue"
+                "Domain ends with dot"
+                (send-email #:from (test/verified-sender)
+                            #:to (list (string-append (test/recipient) "."))
+                            #:subject "test bad address"
+                            #:body "test bad address")))
+   (400-error? "MessageRejected"
+               "Email address is not verified."
+               (send-email #:from (test/unverified-sender)
+                           #:to (list (test/recipient))
+                           #:subject "test unverified sender"
+                           #:body "test unverified sender"))
+   (void)))

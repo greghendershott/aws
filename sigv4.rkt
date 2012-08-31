@@ -113,104 +113,107 @@
 ;; tests
 
 (module+ test
-  (require rackunit
+  (require "run-suite.rkt"
            (planet gh/http/head))
+  (define/run-test-suite
+   "sigv4.rkt"
+   (test-case
+    "sigv4"
+    (parameterize ([private-key "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"]
+                   [public-key "AKIDEXAMPLE"])
+      (define (aws-test-file name)
+        (regexp-replace* 
+         "\r\n"                             ;DOS files with CRLF
+         (file->string (build-path 'same "vendor" "aws4_testsuite" name))
+         "\n"))
 
-  (parameterize ([private-key "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"]
-                 [public-key "AKIDEXAMPLE"])
-    (define (aws-test-file name)
-      (regexp-replace* 
-       "\r\n"                             ;DOS files with CRLF
-       (file->string (build-path 'same "vendor" "aws4_testsuite" name))
-       "\n"))
+      (define heads (hash 'Date "Mon, 09 Sep 2011 23:36:00 GMT"
+                          'Host "host.foo.com"
+                          'Zoo "foobar,zoobar,zoobar"))
+      (define 8601-date "20110909T233600Z")
+      (define region "us-east-1")
+      (define service "host")
+      (define creq (canonical-request "POST" "/" heads #""))
+      (test-case
+       "canonical-request"
+       (check-equal? creq
+                     (aws-test-file "get-header-key-duplicate.creq")))
 
-    (define heads (hash 'Date "Mon, 09 Sep 2011 23:36:00 GMT"
-                        'Host "host.foo.com"
-                        'Zoo "foobar,zoobar,zoobar"))
-    (define 8601-date "20110909T233600Z")
-    (define region "us-east-1")
-    (define service "host")
-    (define creq (canonical-request "POST" "/" heads #""))
-    (test-case
-     "canonical-request"
-     (check-equal? creq
-                   (aws-test-file "get-header-key-duplicate.creq")))
+      (define sts (string-to-sign 8601-date region service creq))
+      (test-case
+       "string-to-sign"
+       (check-equal? sts
+                     (aws-test-file "get-header-key-duplicate.sts")))
 
-    (define sts (string-to-sign 8601-date region service creq))
-    (test-case
-     "string-to-sign"
-     (check-equal? sts
-                   (aws-test-file "get-header-key-duplicate.sts")))
+      (define authz (authorization sts heads 8601-date region service))
+      (test-case
+       "signature"
+       (check-equal? authz
+                     (aws-test-file "get-header-key-duplicate.authz")))
 
-    (define authz (authorization sts heads 8601-date region service))
-    (test-case
-     "signature"
-     (check-equal? authz
-                   (aws-test-file "get-header-key-duplicate.authz")))
+      ;; Amazon provides a number of test files to check the series of steps.
+      ;; Files have same base name, with extensions .req .creq .sts .authz.
+      ;; Let's check ourselves against them.
+      (define (req->sreq base)
+        ;; Most annoying part of this is parsing their original .req:
+        (define xs
+          (file->lines (build-path 'same "vendor" "aws4_testsuite"
+                                   (string-append base ".req"))))
+        (define-values (method path)
+          (match (car xs)
+            [(pregexp "^(.+?) (.+?) (?i:http/\\d\\.\\d)$" (list _ m p))
+             (values m p)]))
+        (define-values (head/string body)
+          (let loop ([s ""]
+                     [xs (cdr xs)])
+            (cond
+             [(empty? xs) (values s #"")]
+             [(string=? (car xs) "") (values (string-append s "\r\n")
+                                             (string->bytes/utf-8
+                                              (string-join (cdr xs) "\r\n")))]
+             [else (loop (string-append s (car xs) "\r\n")
+                         (cdr xs))])))
+        ;; And now we're ready to get going:
+        (define heads (heads-string->dict head/string ","))
+        (define date (seconds->gmt-8601-string
+                      'basic
+                      (gmt-string->seconds (or (dict-ref heads 'Date #f)
+                                               (dict-ref heads 'date #f)
+                                               (dict-ref heads 'DATE #f)))))
 
-    ;; Amazon provides a number of test files to check the series of steps.
-    ;; Files have same base name, with extensions .req .creq .sts .authz.
-    ;; Let's check ourselves against them.
-    (define (req->sreq base)
-      ;; Most annoying part of this is parsing their original .req:
-      (define xs
-        (file->lines (build-path 'same "vendor" "aws4_testsuite"
-                                 (string-append base ".req"))))
-      (define-values (method path)
-        (match (car xs)
-          [(pregexp "^(.+?) (.+?) (?i:http/\\d\\.\\d)$" (list _ m p))
-           (values m p)]))
-      (define-values (head/string body)
-        (let loop ([s ""]
-                   [xs (cdr xs)])
-          (cond
-           [(empty? xs) (values s #"")]
-           [(string=? (car xs) "") (values (string-append s "\r\n")
-                                           (string->bytes/utf-8
-                                            (string-join (cdr xs) "\r\n")))]
-           [else (loop (string-append s (car xs) "\r\n")
-                       (cdr xs))])))
-      ;; And now we're ready to get going:
-      (define heads (heads-string->dict head/string ","))
-      (define date (seconds->gmt-8601-string
-                    'basic
-                    (gmt-string->seconds (or (dict-ref heads 'Date #f)
-                                             (dict-ref heads 'date #f)
-                                             (dict-ref heads 'DATE #f)))))
+        (define creq (canonical-request method path heads body))
+        (check-equal? creq (aws-test-file (string-append base ".creq")))
 
-      (define creq (canonical-request method path heads body))
-      (check-equal? creq (aws-test-file (string-append base ".creq")))
+        (define sts (string-to-sign date region service creq))
+        (check-equal? sts (aws-test-file (string-append base ".sts")))
 
-      (define sts (string-to-sign date region service creq))
-      (check-equal? sts (aws-test-file (string-append base ".sts")))
+        (define authz (authorization sts heads date region service))
+        (check-equal? authz (aws-test-file (string-append base ".authz")))
 
-      (define authz (authorization sts heads date region service))
-      (check-equal? authz (aws-test-file (string-append base ".authz")))
+        (void) ;;(values method path heads body creq date)
+        )
 
-      (void) ;;(values method path heads body creq date)
-      )
+      (req->sreq "get-utf8")
+      (req->sreq "post-vanilla")
+      (req->sreq "post-vanilla-query")
+      (req->sreq "get-vanilla")
+      (req->sreq "get-vanilla-query")
+      (req->sreq "post-x-www-form-urlencoded")
+      (req->sreq "post-x-www-form-urlencoded-parameters")
+      (req->sreq "get-space")
+      ;; (req->sreq "get-header-key-duplicate")
+      ;; (req->sreq "get-header-value-order")
+      ;; (req->sreq "get-relative-relative")
+      ;; (req->sreq "get-relative")
+      ;; (req->sreq "get-slash-dot-slash")
+      ;; (req->sreq "get-slash-pointless-dot")
+      ;; (req->sreq "get-slash")
+      ;; (req->sreq "get-slashes")
+      ;; (req->sreq "get-unreserved")
+      ;; (req->sreq "get-vanilla-empty-query-key")
+      ;; (req->sreq "get-vanilla-query-order-key")
+      ;; (req->sreq "get-vanilla-query-order-key-case")
+      ;; (req->sreq "post-vanilla-query-space")
+      ;; (req->sreq "get-vanilla-ut8-query")
 
-    (req->sreq "get-utf8")
-    (req->sreq "post-vanilla")
-    (req->sreq "post-vanilla-query")
-    (req->sreq "get-vanilla")
-    (req->sreq "get-vanilla-query")
-    (req->sreq "post-x-www-form-urlencoded")
-    (req->sreq "post-x-www-form-urlencoded-parameters")
-    (req->sreq "get-space")
-    ;; (req->sreq "get-header-key-duplicate")
-    ;; (req->sreq "get-header-value-order")
-    ;; (req->sreq "get-relative-relative")
-    ;; (req->sreq "get-relative")
-    ;; (req->sreq "get-slash-dot-slash")
-    ;; (req->sreq "get-slash-pointless-dot")
-    ;; (req->sreq "get-slash")
-    ;; (req->sreq "get-slashes")
-    ;; (req->sreq "get-unreserved")
-    ;; (req->sreq "get-vanilla-empty-query-key")
-    ;; (req->sreq "get-vanilla-query-order-key")
-    ;; (req->sreq "get-vanilla-query-order-key-case")
-    ;; (req->sreq "post-vanilla-query-space")
-    ;; (req->sreq "get-vanilla-ut8-query")
-
-    ))
+      ))))

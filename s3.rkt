@@ -434,125 +434,124 @@
 ;; test
 
 (module+ test
+  (require "run-suite.rkt"
+           net/url)
 
-  (require rackunit
-           net/url
-           "tests/data.rkt"
-           )
+  (define/run-test-suite
+   "s3.rkt"
+   (test-case
+    "bucket+path->bucket&path&uri"
+    (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
+    (check-equal? b "bucket")
+    (check-equal? p "path/name")
+    (check-equal? u "http://bucket.s3.amazonaws.com/path/name"))
 
-  (test-case
-   "bucket+path->bucket&path&uri"
-   (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
-   (check-equal? b "bucket")
-   (check-equal? p "path/name")
-   (check-equal? u "http://bucket.s3.amazonaws.com/path/name"))
+   (test-case
+    "canonical-amz-headers-string"
+    (check-equal? (canonical-amz-headers-string
+                   (hash 'X-AMZ-Meta-ZZZ "VALUE"
+                         'X-Amz-Meta-x "A\nZ"
+                         'X-Amz-Meta-AAA "Value"
+                         'IGNORE-ME "PLEASE"))
+                  (string-append "x-amz-meta-aaa:Value" "\n"
+                                 "x-amz-meta-x:A,Z" "\n"
+                                 "x-amz-meta-zzz:VALUE" "\n")))
 
-  (test-case
-   "canonical-amz-headers-string"
-   (check-equal? (canonical-amz-headers-string
-                  (hash 'X-AMZ-Meta-ZZZ "VALUE"
-                        'X-Amz-Meta-x "A\nZ"
-                        'X-Amz-Meta-AAA "Value"
-                        'IGNORE-ME "PLEASE"))
-                 (string-append "x-amz-meta-aaa:Value" "\n"
-                                "x-amz-meta-x:A,Z" "\n"
-                                "x-amz-meta-zzz:VALUE" "\n")))
+   (test-case
+    "guess-mime-type"
+    (check-equal? (guess-mime-type "/path/to/file.txt") "text/plain")
+    (check-equal? (guess-mime-type "/path/to/file.jpg") "image/jpeg")
+    (check-equal? (guess-mime-type "/path/to/file.unknown") default-mime-type)
+    (check-equal? (guess-mime-type "") default-mime-type))
 
-  (test-case
-   "guess-mime-type"
-   (check-equal? (guess-mime-type "/path/to/file.txt") "text/plain")
-   (check-equal? (guess-mime-type "/path/to/file.jpg") "image/jpeg")
-   (check-equal? (guess-mime-type "/path/to/file.unknown") default-mime-type)
-   (check-equal? (guess-mime-type "") default-mime-type))
+   (test-case
+    "path->Content-Disposition"
+    (check-equal? (path->Content-Disposition "/foo/bar/test.txt")
+                  "attachment; filename=\"test.txt\"")
+    (when (equal? 'windows (system-path-convention-type))
+      (check-equal? (path->Content-Disposition "c:\\foo\\bar\\test.txt")
+                    "attachment; filename=\"test.txt\"")))
 
-  (test-case
-   "path->Content-Disposition"
-   (check-equal? (path->Content-Disposition "/foo/bar/test.txt")
-                 "attachment; filename=\"test.txt\"")
-   (when (equal? 'windows (system-path-convention-type))
-     (check-equal? (path->Content-Disposition "c:\\foo\\bar\\test.txt")
-                   "attachment; filename=\"test.txt\"")))
+   (test-case
+    "put, get, head, ls"
+    (ensure-have-keys)
 
-  (test-case
-   "put, get, head, ls"
-   (ensure-have-keys)
+    (define (member? x xs)
+      (not (not (member x xs))))
 
-   (define (member? x xs)
-     (not (not (member x xs))))
+    (create-bucket (test/bucket))
+    (check-true (member? (test/bucket) (list-buckets)))
 
-   (create-bucket (test/bucket))
-   (check-true (member? (test/bucket) (list-buckets)))
+    (define b+p (string-append (test/bucket) "/" (test/path)))
 
-   (define b+p (string-append (test/bucket) "/" (test/path)))
+    (define data #"Hello, world.")
+    (put/bytes b+p data default-mime-type)
+    (check-equal? (get/bytes b+p) data)
+    (check-equal? (get/bytes b+p '() 0 4)
+                  (subbytes data 0 4))
+    (check-equal? 200 (extract-http-code (head b+p)))
+    (check-true (xexpr? (get-acl b+p)))
 
-   (define data #"Hello, world.")
-   (put/bytes b+p data default-mime-type)
-   (check-equal? (get/bytes b+p) data)
-   (check-equal? (get/bytes b+p '() 0 4)
-                 (subbytes data 0 4))
-   (check-equal? 200 (extract-http-code (head b+p)))
-   (check-true (xexpr? (get-acl b+p)))
+    (check-equal? (call/input-url
+                   (string->url (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
+                   get-pure-port
+                   (lambda (in)
+                     (port->bytes in)))
+                  data)
 
-   (check-equal? (call/input-url
-                  (string->url (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
-                  get-pure-port
-                  (lambda (in)
-                    (port->bytes in)))
-                 data)
+    (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
+    (define chksum (file->Content-MD5 p))
+    (put/file b+p p #:mime-type "text/plain")
+    (get/file b+p p #:exists 'replace)
+    (check-equal? (file->Content-MD5 p) chksum)
+    (check-equal? 200 (extract-http-code (head b+p)))
+    (check-true (member? (test/path) (ls b+p)))
+    (check-true (member? (test/path)
+                         (ls (string-append (test/bucket) "/"))))
+    (check-true (member? (test/path)
+                         (ls (string-append (test/bucket)
+                                            "/"
+                                            (substring (test/path) 0 3)))))
 
-   (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
-   (define chksum (file->Content-MD5 p))
-   (put/file b+p p #:mime-type "text/plain")
-   (get/file b+p p #:exists 'replace)
-   (check-equal? (file->Content-MD5 p) chksum)
-   (check-equal? 200 (extract-http-code (head b+p)))
-   (check-true (member? (test/path) (ls b+p)))
-   (check-true (member? (test/path)
-                        (ls (string-append (test/bucket) "/"))))
-   (check-true (member? (test/path)
-                        (ls (string-append (test/bucket)
-                                           "/"
-                                           (substring (test/path) 0 3)))))
+    (define b+p/copy (string-append b+p "-copy"))
+    (copy b+p b+p/copy)
+    (check-true (member? (string-append (test/path) "-copy")
+                         (ls b+p/copy)))
 
-   (define b+p/copy (string-append b+p "-copy"))
-   (copy b+p b+p/copy)
-   (check-true (member? (string-append (test/path) "-copy")
-                        (ls b+p/copy)))
+    ;; Cleanup
+    (delete b+p/copy)
+    (delete b+p)
+    (delete-bucket (test/bucket))
+    (void))
 
-   ;; Cleanup
-   (delete b+p/copy)
-   (delete b+p)
-   (delete-bucket (test/bucket))
-   (void))
-
-  (test-case
-   "100-continue"
-   ;; Confirm that the gh/http collection's handling of 100-continue is
-   ;; working as expected with S3.
-   ;;
-   ;; Make a PUT request with a Content-Length vastly bigger than S3
-   ;; will accept. Check that S3 responds as expected with "400 Bad
-   ;; Request". Then check that our `writer' proc was NOT called. (Don't
-   ;; worry, if it is called, we don't actually write anything, much
-   ;; less the huge number of bytes.)
-   (ensure-have-keys)
-   (create-bucket (test/bucket))
-   (define writer-called? #f)
-   (check-exn
-    exn:fail:aws?
-    (lambda ()
-      (put (string-append (test/bucket) "/" (test/path))
-           (lambda (out)
-             ;; Set flag that we were asked to write something.
-             ;; (But for this test, don't actually write anything.)
-             (set! writer-called? #t))
-           ;; Content-Length that should elicit 400 error
-           (expt 2 64) ;16,384 petabytes might be too large
-           "text/plain"
-           (lambda (in h)
-             (check-response in h) ;Should raise exn:fail:aws due to 400
-             (port->bytes in)))))
-   (check-false writer-called?)
-   (delete-bucket (test/bucket))
-   (void))
-  )
+   (test-case
+    "100-continue"
+    ;; Confirm that the gh/http collection's handling of 100-continue is
+    ;; working as expected with S3.
+    ;;
+    ;; Make a PUT request with a Content-Length vastly bigger than S3
+    ;; will accept. Check that S3 responds as expected with "400 Bad
+    ;; Request". Then check that our `writer' proc was NOT called. (Don't
+    ;; worry, if it is called, we don't actually write anything, much
+    ;; less the huge number of bytes.)
+    (ensure-have-keys)
+    (create-bucket (test/bucket))
+    (define writer-called? #f)
+    (check-exn
+     exn:fail:aws?
+     (lambda ()
+       (put (string-append (test/bucket) "/" (test/path))
+            (lambda (out)
+              ;; Set flag that we were asked to write something.
+              ;; (But for this test, don't actually write anything.)
+              (set! writer-called? #t))
+            ;; Content-Length that should elicit 400 error
+            (expt 2 64) ;16,384 petabytes might be too large
+            "text/plain"
+            (lambda (in h)
+              (check-response in h) ;Should raise exn:fail:aws due to 400
+              (port->bytes in)))))
+    (check-false writer-called?)
+    (delete-bucket (test/bucket))
+    (void))
+   ))
