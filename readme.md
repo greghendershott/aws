@@ -38,7 +38,9 @@ You can also generate it using `./make-doc.sh`, then point your browser to
 Requirements
 ============
 
-* The access keys for an Amazon Web Services account.
+* The access keys for an Amazon Web Services account. (If you want to experiment
+  but are concerned about cost, keep in mind that AWS has a "free tier" for
+  certain usage.)
 
 * My `http` library available on
   [Github](https://github.com/greghendershott/http) or
@@ -58,6 +60,11 @@ Unit tests
 * The tests require you to specify certain personal information. See
   `tests/example-dot-aws-tests-data` for more information.
 
-* The `rackunit` tests use the submodule feature new in Racket 5.3. Tests are
-  in `(module+ test ..)`. You can run the tests for a `foo.rkt` file with
-  `raco test foo.rkt`. You can run tests for all files using `raco test ./`.
+* The `rackunit` tests use the submodule feature added in Racket 5.3. Tests are
+  in `(module+ test ...)`.
+
+  * You can run the tests for a `foo.rkt` file with `raco test foo.rkt`.
+
+  * You can run tests for all files using `raco test -x ./`.  (The `-x' flag is
+    important to avoid evaluating rkt files that have no `test' module
+    whatsoever.)
