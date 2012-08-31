@@ -65,6 +65,6 @@ Unit tests
 
   * You can run the tests for a `foo.rkt` file with `raco test foo.rkt`.
 
-  * You can run tests for all files using `raco test -x ./`.  (The `-x' flag is
-    important to avoid evaluating rkt files that have no `test' module
+  * You can run tests for all files using `raco test -x ./`.  (The `-x` flag is
+    important to avoid evaluating rkt files that have no `test` module
     whatsoever.)
