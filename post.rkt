@@ -11,7 +11,7 @@
 ;;; This module probably needs a better name/organization.
 
 (define/contract/provide (post-with-retry uri xs-post-data heads [try 1])
-  ((string? (listof (list/c symbol? string?)) dict?)
+  ((string? dict? dict?)
    (exact-positive-integer?)
    . ->* .
    xexpr?)
