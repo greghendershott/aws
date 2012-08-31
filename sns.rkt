@@ -160,8 +160,7 @@
   (define (member? x xs)
     (not (not (member x xs))))
 
-  (define/run-test-suite
-   "sns.rkt"
+  (def/run-test-suite
    (test-case
     "sns"
     (read-keys)

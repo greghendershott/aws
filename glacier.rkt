@@ -540,8 +540,7 @@
   (require "run-suite.rkt"
            (planet gh/aws/sns))
 
-  (define/run-test-suite
-   "glacier.rkt"
+  (def/run-test-suite
    (test-case
     "glacier"
     (define vault (test/vault))

@@ -152,8 +152,7 @@
 
 (module+ test
   (require "run-suite.rkt")
-  (define/run-test-suite
-   "sqs.rkt"
+  (def/run-test-suite
    (test-case
     "sqs"
     (read-keys)

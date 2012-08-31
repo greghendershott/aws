@@ -437,8 +437,7 @@
   (require "run-suite.rkt"
            net/url)
 
-  (define/run-test-suite
-   "s3.rkt"
+  (def/run-test-suite
    (test-case
     "bucket+path->bucket&path&uri"
     (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))

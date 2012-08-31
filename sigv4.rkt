@@ -115,8 +115,7 @@
 (module+ test
   (require "run-suite.rkt"
            (planet gh/http/head))
-  (define/run-test-suite
-   "sigv4.rkt"
+  (def/run-test-suite
    (test-case
     "sigv4"
     (parameterize ([private-key "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"]

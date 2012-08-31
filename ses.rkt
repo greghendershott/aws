@@ -181,8 +181,7 @@
        ;; We expect expr to raise an exception. Return #f if it doesn't
        (begin expr #f))))
 
-  (define/run-test-suite
-   "ses.rkt"
+  (def/run-test-suite
    (test-case
     "miscellaneous"
     (check-true (list? (list-verified-email-addresses)))

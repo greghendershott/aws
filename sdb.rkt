@@ -349,8 +349,7 @@
     (and (equal? (item-name a) (item-name b))
          (attribs-hash=? (item-attribs a) (item-attribs b))))
 
-  (define/run-test-suite
-   "sdb.rkt"
+  (def/run-test-suite
    (test-case
     "domains"
     (read-keys)

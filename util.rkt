@@ -216,8 +216,7 @@
 
 (module+ test
   (require "run-suite.rkt")
-  (define/run-test-suite
-   "util.rkt"
+  (def/run-test-suite
    (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
    (check-equal? (fold-pairs cons '(1 2 3))     '((1 . 2) (3 . #f)))
    (check-equal? (fold-pairs cons '(1 2 3)   4) '((1 . 2) (3 . 4)))

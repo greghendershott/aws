@@ -463,8 +463,7 @@
 (module+ test
   (require "run-suite.rkt")
 
-  (define/run-test-suite
-   "cw.rkt"
+  (def/run-test-suite
    (test-case
     "describe-alarms"
     (define xs (describe-alarms))
