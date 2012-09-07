@@ -349,17 +349,17 @@
 (define/contract/provide (multipart-put b+p
                                         num-parts
                                         get-part
-                                        mime-type
+                                        [mime-type "application/octet-stream"]
                                         [heads '()])
   ((string?
     exact-positive-integer?
-    (exact-nonnegative-integer? . -> . bytes?)
-    string?)
-   (dict?)
+    (exact-nonnegative-integer? . -> . bytes?))
+   (string?
+    dict?)
    . ->* . string?)
   (define upid (start-multipart-upload b+p mime-type))
   (define parts ;TO-DO Use threads to do ~4 in parallel
-    (for/list ([n (in-range 0 num-parts)])
+    (for/list ([n (in-range num-parts)])
       (upload-part b+p upid (add1 n) (get-part n))))
   (finish-multipart-upload b+p upid parts)
   upid)
@@ -469,7 +469,7 @@
 
  ;; Use the higher function:
  (define bstr (make-bytes 5MB))
- (multipart-put b+p 2 (lambda (n) bstr) "application/octet-stream")
+ (multipart-put b+p 2 (lambda (n) bstr))
 
  ;; ;;(define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
  ;; (define p
@@ -487,22 +487,32 @@
   (define-values (base name dir?) (split-path path))
   (format "attachment; filename=\"~a\"" name))
 
-;;; ETag and Content-MD5 utils
+;; ETag and Content-MD5 utils
+
+;; NOTE: For a simple upload, the ETag is the same as MD5. Therefore
+;; when downloading later, can use ETag to compare the MD5
+;; checksum. HOWEVER if the object was uploaded using multipart, the
+;; ETag is NOT the MD5. As a result, unless we're sure the object was
+;; PUT using the simple method, when we GET we can't use the ETag as
+;; an MD5 check. Since in general we can't assume that (the bucket may
+;; have objects uploaded using multipart), we can't do this check.
 
 (define (port-matches-etag? h in)
-  (match (extract-field "ETag" h)
-    [#f
-     (log-warning "port-matches-tag?: Missing ETag header, returning #t")
-     #t]
-    [(regexp "^\"(.+?)\"$" (list _ etag/header)) ;zap quotes
-     (define etag/port (bytes->string/utf-8 (md5 in #t)))
-     (log-debug (tr "port-matches-etag?" etag/header etag/port))
-     (string=? etag/header etag/port)]))
+  #t) ;see comment above
+  ;; (match (extract-field "ETag" h)
+  ;;   [#f
+  ;;    (log-warning "port-matches-tag?: Missing ETag header, returning #t")
+  ;;    #t]
+  ;;   [(regexp "^\"(.+?)\"$" (list _ etag/header)) ;zap quotes
+  ;;    (define etag/port (bytes->string/utf-8 (md5 in #t)))
+  ;;    (log-debug (tr "port-matches-etag?" etag/header etag/port))
+  ;;    (string=? etag/header etag/port)]))
 
 (define (file-matches-etag? h f)
-  (call-with-input-file* f
-                         (lambda (in)
-                           (port-matches-etag? h in))))
+  #t) ;see comment above
+  ;; (call-with-input-file* f
+  ;;                        (lambda (in)
+  ;;                          (port-matches-etag? h in))))
 
 (define/contract (port->Content-MD5 in)
   (input-port? . -> . string?)
@@ -644,41 +654,41 @@
                        (port->bytes in)))
      data)
 
-    ;; Files
+    (define (put&get-file put-using p)
+      (define chksum (file->Content-MD5 p))
+      (put-using b+p p #:mime-type "text/plain")
+      (get/file b+p p #:exists 'replace)
+      (check-equal? (file->Content-MD5 p) chksum)
+      (check-equal? 200 (extract-http-code (head b+p)))
+      (check-true (member? (test/path) (ls b+p)))
+      (check-true (member? (test/path)
+                           (ls (string-append (test/bucket) "/"))))
+      (check-true (member? (test/path)
+                           (ls (string-append (test/bucket)
+                                              "/"
+                                              (substring (test/path) 0 3))))))
+
+    ;; Try put/get file, both simple and multipart
     (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
-    (define chksum (file->Content-MD5 p))
-
-    ;; simple put/file and get/file
-    (put/file b+p p #:mime-type "text/plain")
-    (get/file b+p p #:exists 'replace)
-    (check-equal? (file->Content-MD5 p) chksum)
-    (check-equal? 200 (extract-http-code (head b+p)))
-    (check-true (member? (test/path) (ls b+p)))
-    (check-true (member? (test/path)
-                         (ls (string-append (test/bucket) "/"))))
-    (check-true (member? (test/path)
-                         (ls (string-append (test/bucket)
-                                            "/"
-                                            (substring (test/path) 0 3)))))
-
-    ;; multipart-put/file
-    (multipart-put/file b+p p #:mime-type "text/plain")
-    (get/file b+p p #:exists 'replace)
-    (check-equal? (file->Content-MD5 p) chksum)
-    (check-equal? 200 (extract-http-code (head b+p)))
-    (check-true (member? (test/path) (ls b+p)))
-    (check-true (member? (test/path)
-                         (ls (string-append (test/bucket) "/"))))
-    (check-true (member? (test/path)
-                         (ls (string-append (test/bucket)
-                                            "/"
-                                            (substring (test/path) 0 3)))))
+    (put&get-file put/file p)
+    (put&get-file multipart-put/file p)
 
     ;; Copy
     (define b+p/copy (string-append b+p "-copy"))
     (copy b+p b+p/copy)
     (check-true (member? (string-append (test/path) "-copy")
                          (ls b+p/copy)))
+
+    ;; Multipart upload: Do something larger than 5MB, so actually
+    ;; multiple parts.
+    (define part-size 5MB)
+    (define (get-part-bytes n) (make-bytes part-size n))
+    (define num-parts 3)
+    (multipart-put b+p num-parts get-part-bytes)
+    (for ([i (in-range num-parts)])
+      ;; This is also an opportunity to test Range requests ability:
+      (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+                    (get-part-bytes i)))
 
     ;; Cleanup
     (delete b+p/copy)
