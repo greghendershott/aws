@@ -279,10 +279,8 @@
                                         (void))
                                       #:mode mode-flag
                                       #:exists exists-flag)
-              (if (file-matches-etag? h path)
-                  #t
-                  (error 'get/file
-                         "MD5 checksum did not match ETag")))
+              (cond [(file-matches-etag? h path) #t]
+                    [else (error 'get/file "MD5 checksum != ETag")]))
             heads))
 
 (define 100MB (* 100 1024 1024))
@@ -291,18 +289,16 @@
                               writer
                               data-len
                               mime-type
-                              reader
                               [heads '()])
   ((string?
     (output-port? . -> . void?)
     (or/c #f exact-nonnegative-integer?)
-    string?
-    (input-port? string? . -> . any/c))
+    string?)
    (dict?)
    . ->* . string?)
   (when (> data-len 100MB)
     (log-warning (tr "S3 `put' where " data-len
-                     "(when > 100 MB, consider using multipart-put)")))
+                     "(when > 100 MB, consider using `multipart-put')")))
   (define-values (u h)
     (uri&headers bucket+path
                  "PUT"
@@ -312,7 +308,7 @@
   (call/output-request "1.1" "PUT" u writer data-len h
                        (lambda (in h)
                          (check-response in h)
-                         (reader in h)
+                         (read-entity/bytes in h)
                          h)))
 
 (define/contract/provide (put/bytes bucket+path
@@ -324,7 +320,6 @@
        (lambda (out) (display data out))
        (bytes-length data)
        mime-type
-       read-entity/bytes
        (dict-set heads
                  'Content-MD5 (bytes->Content-MD5 data))))
 
@@ -343,75 +338,79 @@
                                 #:mode mode-flag))
        (file-size path)
        (or mime-type ((path->mime-proc) path))
-       read-entity/bytes
        (hash 'Content-MD5 (file->Content-MD5 path)
              'Content-Disposition (path->Content-Disposition path))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define 5MB (* 5 1024 1024))
-(define index? exact-nonnegative-integer?)
+(define part-number/c (and/c exact-integer? (between/c 1 10000)))
 
 (define/contract/provide (multipart-put b+p
-                                        writer
-                                        data-len
+                                        num-parts
+                                        get-part
                                         mime-type
-                                        reader
                                         [heads '()])
   ((string?
-    (index? index? output-port? . -> . void?)
-    (or/c #f exact-nonnegative-integer?)
-    string?
-    (input-port? string? . -> . any/c))
+    exact-positive-integer?
+    (exact-nonnegative-integer? . -> . bytes?)
+    string?)
    (dict?)
    . ->* . string?)
-  ;; Multi-part upload works only for sizes >= 5MB. If smaller,
-  ;; delegate this to put.
-  (cond
-   [(< data-len 5MB)
-    (log-info (tr "Using single PUT because " data-len
-                  "is < 5MB minimum for S3 multipart upload."))
-    (put b+p
-         (lambda (out)
-           (writer 0 data-len out))
-         data-len mime-type reader heads)]
-   [else
-    (define upid (start-multipart-upload b+p))
-    (define parts ;TO-DO Use threads to do ~4 in parallel
-      (for/list ([part (in-range 1 10001)] ;parts numbered 1...
-                 [from (in-range 0 data-len 5MB)])
-        (define upto (min (+ from 5MB) data-len))
-        (upload-part b+p upid part (- upto from)
-                     (lambda (out) (writer from upto out)))))
-    (finish-multipart-upload b+p upid parts)]))
+  (define upid (start-multipart-upload b+p mime-type))
+  (define parts ;TO-DO Use threads to do ~4 in parallel
+    (for/list ([n (in-range 0 num-parts)])
+      (upload-part b+p upid (add1 n) (get-part n))))
+  (finish-multipart-upload b+p upid parts)
+  upid)
+
+(define/contract/provide (multipart-put/file bucket+path
+                                             path
+                                             #:mime-type [mime-type #f]
+                                             #:mode [mode-flag 'binary])
+  ((string? path?)
+   (#:mime-type (or/c #f string?) #:mode (or/c 'binary 'text))
+   . ->* . string?)
+  (define part-size 5MB)
+  (define num-parts (ceiling (/ (file-size path) part-size)))
+  (define (get-part part-num)
+    ;; Each get-part does its own file open, so we're OK to
+    ;; position/read the same file from multiple threads.
+    (log-debug (tr "get-part" part-num part-size num-parts))
+    (define (read-part in)
+      (file-position in (* part-num part-size))
+      (read-bytes part-size in))
+    (call-with-input-file* path read-part #:mode mode-flag))
+  (multipart-put bucket+path
+                 num-parts
+                 get-part
+                 (or mime-type ((path->mime-proc) path))))
 
 ;; Initiate a multipart upload, return a string identifying the upload.
-(define/contract (start-multipart-upload bucket+path)
-  (string? . -> . string?)
+(define/contract (start-multipart-upload bucket+path mime-type)
+  (string? string? . -> . string?)
   (define b+p (string-append bucket+path "?uploads"))
-  (define-values (u h) (uri&headers b+p "POST" '()))
+  (define-values (u h) (uri&headers b+p "POST" (hash 'Content-Type mime-type)))
   (define x (call/input-request "1.1" "POST" u h read-entity/xexpr))
   (first-tag-value x 'UploadId))
 
-(define part-number/c (and/c exact-integer? (between/c 1 10000)))
-
-(define/contract (upload-part bucket+path upid part len writer)
-  (string? string? part-number/c exact-positive-integer?
-           (output-port? . -> . void?)
+(define/contract (upload-part bucket+path upid part bstr)
+  (string? string? part-number/c bytes?
            . -> . (cons/c part-number/c string?))
   (define b+p (string-append bucket+path
                              "?partNumber=" (number->string part)
                              "&uploadId=" upid))
   (define-values (u h)
-    (uri&headers b+p "PUT" (hash 'Expect "100-continue")))
-  (call/output-request "1.1" "PUT" u writer len h
+    (uri&headers b+p "PUT" (hash 'Expect "100-continue"
+                                 'Content-MD5 (bytes->Content-MD5 bstr))))
+  (call/output-request "1.1" "PUT" u bstr (bytes-length bstr) h
                        (lambda (in h)
                          (check-response in h)
                          (cons part
                                (extract-field "ETag" h)))))
 
 (define/contract (finish-multipart-upload bucket+path upid parts)
-  (string? string? (listof (cons/c part-number/c string?)) . -> . any)
+  (string? string? (listof (cons/c part-number/c string?)) . -> . xexpr?)
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "POST" '()))
@@ -426,7 +425,8 @@
                          (define x (read-entity/xexpr in h))
                          ;; Check the response XML to see if
                          ;; truly succeeded.
-                         (when (tags x 'Error)
+                         (when (first-tag-value x 'Error)
+                           (log-fatal (tr x))
                            (raise (header&response->exn:fail:aws
                                    h x (current-continuation-marks))))
                          x)))
@@ -459,13 +459,23 @@
  (ensure-have-keys)
  (create-bucket (test/bucket))
  (define b+p (string-append (test/bucket) "/" (test/path)))
- (define upid (start-multipart-upload b+p))
- (define parts
-   (for/list ([i (in-range 1 4)])
-     (upload-part b+p upid i 5MB
-                  (lambda (out)
-                    (void (write-bytes (make-bytes 5MB) out))))))
- (finish-multipart-upload b+p upid parts)
+
+ ;; ;; Do the separate steps:
+ ;; (define upid (start-multipart-upload b+p))
+ ;; (define bstr (make-bytes 5MB))
+ ;; (define parts (for/list ([part-num (in-range 1 4)])
+ ;;                 (upload-part b+p upid part-num bstr)))
+ ;; (finish-multipart-upload b+p upid parts)
+
+ ;; Use the higher function:
+ (define bstr (make-bytes 5MB))
+ (multipart-put b+p 2 (lambda (n) bstr) "application/octet-stream")
+
+ ;; ;;(define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
+ ;; (define p
+ ;;   (string->path "/Users/greg/Downloads/racket-5.2.1-bin-x86_64-osx-mac.dmg"))
+ ;; (multipart-put/file b+p p #:mime-type "text/plain")
+
  ;; (abort-multipart-upload b+p upid)
  ;; (delete-bucket (test/bucket))
  )
@@ -481,9 +491,12 @@
 
 (define (port-matches-etag? h in)
   (match (extract-field "ETag" h)
-    [#f #t]
+    [#f
+     (log-warning "port-matches-tag?: Missing ETag header, returning #t")
+     #t]
     [(regexp "^\"(.+?)\"$" (list _ etag/header)) ;zap quotes
      (define etag/port (bytes->string/utf-8 (md5 in #t)))
+     (log-debug (tr "port-matches-etag?" etag/header etag/port))
      (string=? etag/header etag/port)]))
 
 (define (file-matches-etag? h f)
@@ -613,6 +626,7 @@
 
     (define b+p (string-append (test/bucket) "/" (test/path)))
 
+    ;; put/bytes
     (define data #"Hello, world.")
     (put/bytes b+p data default-mime-type)
     (check-equal? (get/bytes b+p) data)
@@ -621,15 +635,20 @@
     (check-equal? 200 (extract-http-code (head b+p)))
     (check-true (xexpr? (get-acl b+p)))
 
-    (check-equal? (call/input-url
-                   (string->url (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
-                   get-pure-port
-                   (lambda (in)
-                     (port->bytes in)))
-                  data)
+    ;; sign-uri
+    (check-equal?
+     (call/input-url (string->url
+                      (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
+                     get-pure-port
+                     (lambda (in)
+                       (port->bytes in)))
+     data)
 
+    ;; Files
     (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
     (define chksum (file->Content-MD5 p))
+
+    ;; simple put/file and get/file
     (put/file b+p p #:mime-type "text/plain")
     (get/file b+p p #:exists 'replace)
     (check-equal? (file->Content-MD5 p) chksum)
@@ -642,6 +661,20 @@
                                             "/"
                                             (substring (test/path) 0 3)))))
 
+    ;; multipart-put/file
+    (multipart-put/file b+p p #:mime-type "text/plain")
+    (get/file b+p p #:exists 'replace)
+    (check-equal? (file->Content-MD5 p) chksum)
+    (check-equal? 200 (extract-http-code (head b+p)))
+    (check-true (member? (test/path) (ls b+p)))
+    (check-true (member? (test/path)
+                         (ls (string-append (test/bucket) "/"))))
+    (check-true (member? (test/path)
+                         (ls (string-append (test/bucket)
+                                            "/"
+                                            (substring (test/path) 0 3)))))
+
+    ;; Copy
     (define b+p/copy (string-append b+p "-copy"))
     (copy b+p b+p/copy)
     (check-true (member? (string-append (test/path) "-copy")
@@ -660,9 +693,9 @@
     ;;
     ;; Make a PUT request with a Content-Length vastly bigger than S3
     ;; will accept. Check that S3 responds as expected with "400 Bad
-    ;; Request". Then check that our `writer' proc was NOT called. (Don't
-    ;; worry, if it is called, we don't actually write anything, much
-    ;; less the huge number of bytes.)
+    ;; Request". Then check that our `writer' proc was NOT
+    ;; called. (Don't worry, if it is called, we don't actually write
+    ;; anything at all; definitely not the huge number of bytes.)
     (ensure-have-keys)
     (create-bucket (test/bucket))
     (define writer-called? #f)
@@ -676,10 +709,7 @@
               (set! writer-called? #t))
             ;; Content-Length that should elicit 400 error
             (expt 2 64) ;16,384 petabytes might be too large
-            "text/plain"
-            (lambda (in h)
-              (check-response in h) ;Should raise exn:fail:aws due to 400
-              (port->bytes in)))))
+            "text/plain")))
     (check-false writer-called?)
     (delete-bucket (test/bucket))
     (void))
