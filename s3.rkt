@@ -55,10 +55,10 @@
   (let* ([xs (for/list ([(k v) (in-dict h)]
                         #:when (regexp-match? #rx"^(?i:x-amz-)"
                                               (symbol->string k)))
-                 (format "~a:~a\n"                            ;4,6
-                         (string-downcase (symbol->string k)) ;1
-                         (regexp-replace #rx"\n" v ",")))]    ;3,5
-         [xs (sort xs string<?)])                             ;2
+               (format "~a:~a\n"                            ;4,6
+                       (string-downcase (symbol->string k)) ;1
+                       (regexp-replace #rx"\n" v ",")))]    ;3,5
+         [xs (sort xs string<?)])                           ;2
     (string-join xs "")))
 
 (define/contract (canonical-string-to-sign bucket+path method date heads)
@@ -164,7 +164,7 @@
   ;; over one persistent connection would at least eliminate the
   ;; connection overhead.
   (for/list ([x (in-list xs)])
-      (define p (string-append b "/" x))
+    (define p (string-append b "/" x))
     (define heads (head p))
     (define acl (get-acl p))
     (list x heads acl)))
@@ -285,6 +285,8 @@
                          "MD5 checksum did not match ETag")))
             heads))
 
+(define 100MB (* 100 1024 1024))
+
 (define/contract/provide (put bucket+path
                               writer
                               data-len
@@ -298,6 +300,9 @@
     (input-port? string? . -> . any/c))
    (dict?)
    . ->* . string?)
+  (when (> data-len 100MB)
+    (log-warning (tr "S3 `put' where " data-len
+                     "(when > 100 MB, consider using multipart-put)")))
   (define-values (u h)
     (uri&headers bucket+path
                  "PUT"
@@ -341,6 +346,131 @@
        read-entity/bytes
        (hash 'Content-MD5 (file->Content-MD5 path)
              'Content-Disposition (path->Content-Disposition path))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define 5MB (* 5 1024 1024))
+(define index? exact-nonnegative-integer?)
+
+(define/contract/provide (multipart-put b+p
+                                        writer
+                                        data-len
+                                        mime-type
+                                        reader
+                                        [heads '()])
+  ((string?
+    (index? index? output-port? . -> . void?)
+    (or/c #f exact-nonnegative-integer?)
+    string?
+    (input-port? string? . -> . any/c))
+   (dict?)
+   . ->* . string?)
+  ;; Multi-part upload works only for sizes >= 5MB. If smaller,
+  ;; delegate this to put.
+  (cond
+   [(< data-len 5MB)
+    (log-info (tr "Using single PUT because " data-len
+                  "is < 5MB minimum for S3 multipart upload."))
+    (put b+p
+         (lambda (out)
+           (writer 0 data-len out))
+         data-len mime-type reader heads)]
+   [else
+    (define upid (start-multipart-upload b+p))
+    (define parts ;TO-DO Use threads to do ~4 in parallel
+      (for/list ([part (in-range 1 10001)] ;parts numbered 1...
+                 [from (in-range 0 data-len 5MB)])
+        (define upto (min (+ from 5MB) data-len))
+        (upload-part b+p upid part (- upto from)
+                     (lambda (out) (writer from upto out)))))
+    (finish-multipart-upload b+p upid parts)]))
+
+;; Initiate a multipart upload, return a string identifying the upload.
+(define/contract (start-multipart-upload bucket+path)
+  (string? . -> . string?)
+  (define b+p (string-append bucket+path "?uploads"))
+  (define-values (u h) (uri&headers b+p "POST" '()))
+  (define x (call/input-request "1.1" "POST" u h read-entity/xexpr))
+  (first-tag-value x 'UploadId))
+
+(define part-number/c (and/c exact-integer? (between/c 1 10000)))
+
+(define/contract (upload-part bucket+path upid part len writer)
+  (string? string? part-number/c exact-positive-integer?
+           (output-port? . -> . void?)
+           . -> . (cons/c part-number/c string?))
+  (define b+p (string-append bucket+path
+                             "?partNumber=" (number->string part)
+                             "&uploadId=" upid))
+  (define-values (u h)
+    (uri&headers b+p "PUT" (hash 'Expect "100-continue")))
+  (call/output-request "1.1" "PUT" u writer len h
+                       (lambda (in h)
+                         (check-response in h)
+                         (cons part
+                               (extract-field "ETag" h)))))
+
+(define/contract (finish-multipart-upload bucket+path upid parts)
+  (string? string? (listof (cons/c part-number/c string?)) . -> . any)
+  (define xm (parts->xml-bytes parts))
+  (define b+p (string-append bucket+path "?uploadId=" upid))
+  (define-values (u h) (uri&headers b+p "POST" '()))
+  (call/output-request "1.1" "POST" u xm (bytes-length xm) h
+                       (lambda (in h)
+                         (check-response in h)
+                         ;; Even if we got a 200 OK status in the
+                         ;; header, there may be a delay of minutes
+                         ;; until S3 writes us the body response. It
+                         ;; may send us space chars to help keep the
+                         ;; connection open.
+                         (define x (read-entity/xexpr in h))
+                         ;; Check the response XML to see if
+                         ;; truly succeeded.
+                         (when (tags x 'Error)
+                           (raise (header&response->exn:fail:aws
+                                   h x (current-continuation-marks))))
+                         x)))
+
+(define/contract (parts->xml-bytes parts)
+  ((listof (cons/c part-number/c string?)) . -> . bytes?)
+  (string->bytes/utf-8
+   (xexpr->string
+    `(CompleteMultipartUpload
+      ()
+      ,@(map (lambda (x)
+               (match-define (cons part etag) x)
+               (let ([part (number->string part)]
+                     [etag (cadr (regexp-match #rx"^\"(.+?)\"$" etag))])
+                 `(Part ()
+                        (PartNumber () ,part)
+                        (ETag () ,etag))))
+             (sort parts < #:key car))))))
+
+(define/contract (abort-multipart-upload bucket+path upid)
+  (string? string? . -> . void)
+  (define b+p (string-append bucket+path"?uploadId=" upid))
+  (define-values (u h) (uri&headers b+p "DELETE" '()))
+  (call/input-request "1.1" "DELETE" u h (lambda (in h) (void))))
+
+(require rackunit "tests/data.rkt")
+;; (test-case
+;;  "multipart upload"
+(define (try-it)
+ (ensure-have-keys)
+ (create-bucket (test/bucket))
+ (define b+p (string-append (test/bucket) "/" (test/path)))
+ (define upid (start-multipart-upload b+p))
+ (define parts
+   (for/list ([i (in-range 1 4)])
+     (upload-part b+p upid i 5MB
+                  (lambda (out)
+                    (void (write-bytes (make-bytes 5MB) out))))))
+ (finish-multipart-upload b+p upid parts)
+ ;; (abort-multipart-upload b+p upid)
+ ;; (delete-bucket (test/bucket))
+ )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract (path->Content-Disposition path)
   (path-string? . -> . string?)
