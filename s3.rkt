@@ -10,6 +10,7 @@
          "util.rkt"
          "exn.rkt"
          "keys.rkt"
+         "pool.rkt"
          )
 
 (define s3-scheme (make-parameter "http"))
@@ -357,11 +358,29 @@
    (string?
     dict?)
    . ->* . string?)
-  (define upid (start-multipart-upload b+p mime-type))
-  (define parts ;TO-DO Use threads to do ~4 in parallel
-    (for/list ([n (in-range num-parts)])
-      (upload-part b+p upid (add1 n) (get-part n))))
-  (finish-multipart-upload b+p upid parts)
+  (define upid (initiate-multipart-upload b+p mime-type))
+  ;; ;; Simple version:
+  ;; (define parts
+  ;;   (for/list ([n (in-range num-parts)])
+  ;;     (upload-part b+p upid (add1 n) (get-part n))))
+  ;;
+  ;; Using a worker pool:
+  ;;
+  ;; Some modest concurrency, such as 4, could help with upload
+  ;; speeds. Too much could slow things down -- and use too much
+  ;; memory: `get-part' is giving us bytes?, which for S3 multipart
+  ;; upload must be at least 5 MB. So 4 workers is using 20 MB for
+  ;; in-memory buffers. Easy, Trigger.
+  (define parts
+    (with-worker-pool
+     (min 4 num-parts)
+     (lambda (pool)
+       (for/list ([n (in-range num-parts)])
+         (add-job pool
+                  (lambda ()
+                    (upload-part b+p upid (add1 n) (get-part n)))))
+       (get-results pool num-parts))))
+  (complete-multipart-upload b+p upid parts)
   upid)
 
 (define/contract/provide (multipart-put/file bucket+path
@@ -387,7 +406,7 @@
                  (or mime-type ((path->mime-proc) path))))
 
 ;; Initiate a multipart upload, return a string identifying the upload.
-(define/contract (start-multipart-upload bucket+path mime-type)
+(define/contract (initiate-multipart-upload bucket+path mime-type)
   (string? string? . -> . string?)
   (define b+p (string-append bucket+path "?uploads"))
   (define-values (u h) (uri&headers b+p "POST" (hash 'Content-Type mime-type)))
@@ -409,7 +428,7 @@
                          (cons part
                                (extract-field "ETag" h)))))
 
-(define/contract (finish-multipart-upload bucket+path upid parts)
+(define/contract (complete-multipart-upload bucket+path upid parts)
   (string? string? (listof (cons/c part-number/c string?)) . -> . xexpr?)
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
@@ -451,34 +470,6 @@
   (define b+p (string-append bucket+path"?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "DELETE" '()))
   (call/input-request "1.1" "DELETE" u h (lambda (in h) (void))))
-
-(require rackunit "tests/data.rkt")
-;; (test-case
-;;  "multipart upload"
-(define (try-it)
- (ensure-have-keys)
- (create-bucket (test/bucket))
- (define b+p (string-append (test/bucket) "/" (test/path)))
-
- ;; ;; Do the separate steps:
- ;; (define upid (start-multipart-upload b+p))
- ;; (define bstr (make-bytes 5MB))
- ;; (define parts (for/list ([part-num (in-range 1 4)])
- ;;                 (upload-part b+p upid part-num bstr)))
- ;; (finish-multipart-upload b+p upid parts)
-
- ;; Use the higher function:
- (define bstr (make-bytes 5MB))
- (multipart-put b+p 2 (lambda (n) bstr))
-
- ;; ;;(define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
- ;; (define p
- ;;   (string->path "/Users/greg/Downloads/racket-5.2.1-bin-x86_64-osx-mac.dmg"))
- ;; (multipart-put/file b+p p #:mime-type "text/plain")
-
- ;; (abort-multipart-upload b+p upid)
- ;; (delete-bucket (test/bucket))
- )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -679,11 +670,11 @@
     (check-true (member? (string-append (test/path) "-copy")
                          (ls b+p/copy)))
 
-    ;; Multipart upload: Do something larger than 5MB, so actually
-    ;; multiple parts.
-    (define part-size 5MB)
+    ;; Multipart upload: Do with enough parts to exercise the worker
+    ;; pool of 4 threads. How about 8 parts.
+    (define part-size 5MB)              ;The minimum S3 will accept
     (define (get-part-bytes n) (make-bytes part-size n))
-    (define num-parts 3)
+    (define num-parts 8)
     (multipart-put b+p num-parts get-part-bytes)
     (for ([i (in-range num-parts)])
       ;; This is also an opportunity to test Range requests ability:
