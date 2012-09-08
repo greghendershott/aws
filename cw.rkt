@@ -57,20 +57,18 @@
   (seconds->gmt-8601-string 'T/Z s))
 
 (define (str->secs s)
-  (cond
-   [(false? s) 0]
-   [else (gmt-8601-string->seconds s)]))
+  (cond [(false? s) 0]
+        [else (gmt-8601-string->seconds s)]))
 
 (define (string->boolean s)
-  (cond
-   [(string-ci=? "true" s) #t]
-   [(string-ci=? "false" s) #f]
-   [else
-    (define n (string->number s))
-    (cond
-     [(false? n)
-      (error 'string->boolean "cannot convert string \"~a\" to a boolean" s)]
-     [else (not (zero? n))])]))
+  (cond [(string-ci=? "true" s) #t]
+        [(string-ci=? "false" s) #f]
+        [else
+         (define n (string->number s))
+         (cond [(false? n)
+                (error 'string->boolean
+                       "cannot convert string \"~a\" to a boolean" s)]
+               [else (not (zero? n))])]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -86,14 +84,12 @@
 
 ;; any/c -> (or/c any/c #f)
 (define (ws x)
-  (cond
-
-   [(list? x) (nuke-ws x)]
-   [(string? x)
-    (match x
-      [(pregexp "^\\s*$") #f]
-      [else x])]
-   [else x]))
+  (cond [(list? x) (nuke-ws x)]
+        [(string? x)
+         (match x
+           [(pregexp "^\\s*$") #f]
+           [else x])]
+        [else x]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -63,24 +63,22 @@
   ;; with tag, at any depth. Even if a tag is nested inside the same
   ;; tag, so be careful using this with hierarchical XML.
   (define (do xpr parent)
-    (cond
-     [(empty? xpr) '()]
-     [else
-      (define this-xpr (first xpr))
-      (cond
-       [(and (list? this-xpr)
-             (not (empty? this-xpr)))
-        (define this-tag (first this-xpr))
-        (define found? (and (equal? this-tag tag)
-                            (or (not direct-child-of)
-                                (equal? direct-child-of parent))))
-        (append (if found?
-                    (list this-xpr)       ;found one!
-                    '())
-                (do this-xpr this-tag)    ;down
-                (do (rest xpr) parent))]  ;across
-       [else
-        (do (rest xpr) parent)])]))       ;across
+    (cond [(empty? xpr) '()]
+          [else
+           (define this-xpr (first xpr))
+           (cond [(and (list? this-xpr)
+                       (not (empty? this-xpr)))
+                  (define this-tag (first this-xpr))
+                  (define found? (and (equal? this-tag tag)
+                                      (or (not direct-child-of)
+                                          (equal? direct-child-of parent))))
+                  (append (if found?
+                              (list this-xpr)       ;found one!
+                              '())
+                          (do this-xpr this-tag)    ;down
+                          (do (rest xpr) parent))]  ;across
+                 [else
+                  (do (rest xpr) parent)])]))       ;across
   (do xpr #f))
 
 ;; ;; test
@@ -185,17 +183,16 @@
 (define/contract/provide (fold-pairs f xs [missing-value #f])
   (((any/c any/c . -> . any/c) list?) (any/c) . ->* . list?)
   (let loop ([xs xs])
-    (cond
-     [(empty? xs)
-      '()]
-     [(empty? (cdr xs))
-      ;;(printf "fold-pairs ~a ~a\n" (car xs) last-val)
-      (cons (f (car xs) missing-value)
-            (loop '()))]
-     [else
-      ;;(printf "fold-pairs ~a ~a\n" (car xs) (cadr xs))
-      (cons (f (car xs) (cadr xs))
-            (loop (cddr xs)))])))
+    (cond [(empty? xs)
+           '()]
+          [(empty? (cdr xs))
+           ;;(printf "fold-pairs ~a ~a\n" (car xs) last-val)
+           (cons (f (car xs) missing-value)
+                 (loop '()))]
+          [else
+           ;;(printf "fold-pairs ~a ~a\n" (car xs) (cadr xs))
+           (cons (f (car xs) (cadr xs))
+                 (loop (cddr xs)))])))
 
 ;; Repeatedly call `fold-pairs' until there is just one value, and
 ;; return that.
@@ -204,9 +201,8 @@
   (when (empty? xs)
     (error 'reduce-pairs "expected non-empty list"))
   (let ([xs (fold-pairs f xs missing-value)])
-    (cond
-     [(empty? (cdr xs)) (car xs)]         ;reduced to one, the answer
-     [else (reduce-pairs f xs missing-value)])))
+    (cond [(empty? (cdr xs)) (car xs)]  ;reduced to one, the answer
+          [else (reduce-pairs f xs missing-value)])))
 
 ;; Much like `hash' lets you supply the pairs as a flat list, `alist'
 ;; lets you do so for an association list. Saves some tedious typing
