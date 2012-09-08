@@ -251,12 +251,7 @@
    . ->* . bytes?)
   (get/proc bucket+path
             (lambda (in h)
-              (define b (read-entity/bytes in h))
-              (unless (and beg end) ;range
-                (unless (port-matches-etag? h (open-input-bytes b))
-                  (error 'get/bytes
-                         "MD5 checksum did not match ETag")))
-              b)
+              (read-entity/bytes in h))
             heads
             beg
             end))
@@ -271,7 +266,7 @@
     #:mode (or/c 'binary 'text)
     #:exists (or/c 'error 'append 'update 'replace 'truncate
                    'truncate/replace))
-   . ->* . any/c)
+   . ->* . void)
   (get/proc bucket+path
             (lambda (in h)
               (call-with-output-file* path
@@ -279,9 +274,7 @@
                                         (read-entity/port in h out)
                                         (void))
                                       #:mode mode-flag
-                                      #:exists exists-flag)
-              (cond [(file-matches-etag? h path) #t]
-                    [else (error 'get/file "MD5 checksum != ETag")]))
+                                      #:exists exists-flag))
             heads))
 
 (define 100MB (* 100 1024 1024))
@@ -350,7 +343,7 @@
 (define/contract/provide (multipart-put b+p
                                         num-parts
                                         get-part
-                                        [mime-type "application/octet-stream"]
+                                        [mime-type default-mime-type]
                                         [heads '()])
   ((string?
     exact-positive-integer?
@@ -358,7 +351,7 @@
    (string?
     dict?)
    . ->* . string?)
-  (define upid (initiate-multipart-upload b+p mime-type))
+  (define upid (initiate-multipart-upload b+p mime-type heads))
   ;; ;; Simple version:
   ;; (define parts
   ;;   (for/list ([n (in-range num-parts)])
@@ -403,17 +396,19 @@
   (multipart-put bucket+path
                  num-parts
                  get-part
-                 (or mime-type ((path->mime-proc) path))))
+                 (or mime-type ((path->mime-proc) path))
+                 (hash 'Content-Disposition (path->Content-Disposition path))))
 
-;; Initiate a multipart upload, return a string identifying the upload.
-(define/contract (initiate-multipart-upload bucket+path mime-type)
-  (string? string? . -> . string?)
+(define/contract/provide (initiate-multipart-upload bucket+path mime-type heads)
+  (string? string? dict? . -> . string?)
   (define b+p (string-append bucket+path "?uploads"))
-  (define-values (u h) (uri&headers b+p "POST" (hash 'Content-Type mime-type)))
+  (define-values (u h) (uri&headers b+p
+                                    "POST"
+                                    (dict-set* heads 'Content-Type mime-type)))
   (define x (call/input-request "1.1" "POST" u h read-entity/xexpr))
   (first-tag-value x 'UploadId))
 
-(define/contract (upload-part bucket+path upid part bstr)
+(define/contract/provide (upload-part bucket+path upid part bstr)
   (string? string? part-number/c bytes?
            . -> . (cons/c part-number/c string?))
   (define b+p (string-append bucket+path
@@ -428,7 +423,7 @@
                          (cons part
                                (extract-field "ETag" h)))))
 
-(define/contract (complete-multipart-upload bucket+path upid parts)
+(define/contract/provide (complete-multipart-upload bucket+path upid parts)
   (string? string? (listof (cons/c part-number/c string?)) . -> . xexpr?)
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
@@ -465,7 +460,7 @@
                         (ETag () ,etag))))
              (sort parts < #:key car))))))
 
-(define/contract (abort-multipart-upload bucket+path upid)
+(define/contract/provide (abort-multipart-upload bucket+path upid)
   (string? string? . -> . void)
   (define b+p (string-append bucket+path"?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "DELETE" '()))
@@ -479,31 +474,6 @@
   (format "attachment; filename=\"~a\"" name))
 
 ;; ETag and Content-MD5 utils
-
-;; NOTE: For a simple upload, the ETag is the same as MD5. Therefore
-;; when downloading later, can use ETag to compare the MD5
-;; checksum. HOWEVER if the object was uploaded using multipart, the
-;; ETag is NOT the MD5. As a result, unless we're sure the object was
-;; PUT using the simple method, when we GET we can't use the ETag as
-;; an MD5 check. Since in general we can't assume that (the bucket may
-;; have objects uploaded using multipart), we can't do this check.
-
-(define (port-matches-etag? h in)
-  #t) ;see comment above
-  ;; (match (extract-field "ETag" h)
-  ;;   [#f
-  ;;    (log-warning "port-matches-tag?: Missing ETag header, returning #t")
-  ;;    #t]
-  ;;   [(regexp "^\"(.+?)\"$" (list _ etag/header)) ;zap quotes
-  ;;    (define etag/port (bytes->string/utf-8 (md5 in #t)))
-  ;;    (log-debug (tr "port-matches-etag?" etag/header etag/port))
-  ;;    (string=? etag/header etag/port)]))
-
-(define (file-matches-etag? h f)
-  #t) ;see comment above
-  ;; (call-with-input-file* f
-  ;;                        (lambda (in)
-  ;;                          (port-matches-etag? h in))))
 
 (define/contract (port->Content-MD5 in)
   (input-port? . -> . string?)
