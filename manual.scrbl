@@ -474,12 +474,15 @@ You may pass request headers in the optional @racket[heads] argument.
 
 @margin-note{Although you may use @racket[put] directly, it is also a building
 block for other procedures that you may find more convenient, such as
-@racket[put/bytes] and @racket[put/file].}
+@racket[put/bytes] and @racket[put/file].
+
+To upload more than about 100 MB, see @racket[multipart-put].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]), using the @racket[writer] procedure to write
-the request entity and the @racket[reader] procedure to read the response entity.
-Returns the response header (unless it raises @racket[exn:fail:aws]).
+@racket["bucket/path/to/resource"]), using the @racket[writer] procedure to
+write the request entity and the @racket[reader] procedure to read the
+response entity.  Returns the response header (unless it raises
+@racket[exn:fail:aws]).
 
 The @racket[writer] procedure is given an @racket[output-port?] and a
 @racket[string?] representing the response headers. It should write the
@@ -496,6 +499,9 @@ should read it anyway.
 Note: If you want a @tt{Content-MD5} request header, you must calculate and
 supply it yourself in @racket[heads].
 
+To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+"REDUCED_REDUNDANCY")] for @racket[heads].
+
 }
 
 
@@ -506,6 +512,8 @@ supply it yourself in @racket[heads].
 [heads dict? '()]
 ) void?]{
 
+@margin-note{To upload more than about 100 MB, see @racket[multipart-put].}
+
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]), sending @racket[data] as the request entity
 and creating a @tt{Content-Type} header from @racket[mime-type]. Returns the
@@ -514,6 +522,9 @@ response header (unless it raises @racket[exn:fail:aws]).
 A @tt{Content-MD5} request header is automatically created from
 @racket[data]. To ensure data integrity, S3 will reject the request if the
 bytes it receives do not match the MD5 checksum.
+
+To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+"REDUCED_REDUNDANCY")] for @racket[heads].
 
 }
 
@@ -524,6 +535,9 @@ bytes it receives do not match the MD5 checksum.
 [#:mime-type mime-type (or/c #f string?) #f]
 [#:mode mode-flag (or/c 'binary 'text) 'binary]
 ) void?]{
+
+@margin-note{For files larger than about 100 MB, see
+@racket[multipart-put/file].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]) and copy the the request entity directly
@@ -549,6 +563,9 @@ A @tt{Content-Disposition} request header is automatically created from
 This is helpful because a web browser that is given the URI for the object will
 propmt the user to download it as a file.
 
+To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+"REDUCED_REDUNDANCY")] for @racket[heads].
+
 }
 
 
@@ -558,6 +575,116 @@ A procedure which takes a @racket[path-string?] and returns a @racket[string?]
 with a MIME type.
 
 }
+
+
+@subsection{Multipart uploads}
+
+In addition to uploading an entire object in a single @tt{PUT} request, S3
+lets you upload it in multiple 5 MB or larger chunks, using the
+@hyperlink["http://docs.amazonwebservices.com/AmazonS3/2006-03-01/dev/UsingRESTAPImpUpload.html"
+"multipart upload API"]. Amazon recommends using this when the total data to upload is bigger than about 100 MB.
+
+
+@subsubsection{Convenience}
+
+
+@defproc[(multipart-put
+[bucket+path string?]
+[num-parts exact-positive-integer?]
+[get-part (exact-nonnegative-integer? . -> . bytes?)]
+[mime-type string? "application/x-unknown-content-type"]
+[heads dict? '()]
+) string?]{
+
+Upload @racket[num-parts] parts where the data for each part is returned by
+the @racket[get-part] procedure you supply. (In other words, your
+@racket[get-part] procedure is called @racket[num-parts] times, with values
+@racket[(in-range num-parts)].)
+
+Each part must be at least 5 MB, except the last part.
+
+The parts are uploaded using a small number of worker threads, to get some
+parallelism and probably better performance.
+
+}
+
+
+@defproc[(multipart-put/file
+[bucket+path string?]
+[path path?]
+[#:mime-type mime-type string? #f]
+[#:mode mode-flag (or/c 'binary 'text) 'binary]
+) string?]{
+
+Like @racket[put/file] but uses multipart upload.
+
+The parts are uploaded using a small number of worker threads, to get some
+parallelism and probably better performance.
+
+}
+
+
+@subsubsection{Building blocks}
+
+Use these if the data you're uploading is computed on the fly and you don't
+know the total size in advance. Otherwise you may simply use
+@racket[multipart-put] or @racket[multipart-put/file].
+
+
+@defproc[(initiate-multipart-upload
+[bucket+path string?]
+[mime-type string?]
+[heads dict?]
+) string?]{
+
+Initiate a multipart upload and return an upload ID.
+
+}
+
+
+@defproc[(upload-part
+[bucket+path string?]
+[upload-id string?]
+[part-number (and/c exact-integer? (between/c 1 10000))]
+[bstr bytes?]
+) (cons/c (and/c exact-integer? (between/c 1 10000)) string?)]{
+
+Upload a part for the multipart upload specified by the @racket[upload-id]
+returned from @racket[initiate-multipart-upload].
+
+Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
+part. (You will need to give a list of these to
+@racket[complete-multipart-upload].)
+
+@racket[bstr] must be at least 5 MB, unless it's the last part.
+
+}
+
+
+@defproc[(complete-multipart-upload
+[bucket+path string?]
+[upload-id string?]
+[parts (listof (cons/c (and/c exact-integer? (between/c 1 10000)) string?))]
+) xexpr?]{
+
+Complete the multipart upload specified by the @racket[upload-id] returned
+from @racket[initiate-multipart-upload], and a list of the values returned
+from each @racket[upload-part].  Return S3's XML response in the form of an
+@racket[xexpr?].
+
+}
+
+
+@defproc[(abort-multipart-upload
+[bucket+path string?]
+[upload-id string?]
+) void?]{
+
+Abort the multipart upload @racket[upload-id] that was started by
+@racket[initiate-multipart-upload].
+
+}
+
 
 @subsection{S3 examples}
 
