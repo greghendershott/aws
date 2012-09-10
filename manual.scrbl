@@ -22,13 +22,37 @@
 @; ----------------------------------------------------------------------------
 @section{Introduction}
 
-This libary provides support for some of the Amazon Web Services.
+This libary provides support for many of the
+@hyperlink["http://aws.amazon.com/documentation/" "Amazon Web Services"].
 
-@subsection{Scope and philosophy}
+@subsection{Which services?}
 
-The goal is to provide just enough ``wrapper'' around a service, to make it
-convenient to use from Racket, without obscuring how the service actually
-works.
+The services supported are those most likely to be used both
+
+@itemize[
+@item{In an application.}
+@item{Via an AWS interface.}
+]
+
+@italic{Not} supported are services like EC2 that are mainly about managing
+the ``infrastructure'' for your application, such as creating servers on which
+to run. The assumption is that you can use Amazon's command line tools or web
+app console to do that. (If your application is @italic{about} managing
+infrastructure, sorry.)
+
+Also not supported is the ElastiCache service. Its application use interface
+is the usual @tt{memcached} protocol. Amazon provides another interface for
+managing the infrastructure of ElastiCache, not for using it.
+
+Likewise RDS: Although Amazon lets you programatically create and manage
+database servers, your application uses them in the usual way, for
+example via Racket's @racket[db] library.
+
+@subsection{Scope}
+
+The goal is to provide enough ``wrapper'' around a service's HTTP interface to
+make it convenient to use from Racket, but not obscure the service's
+semantics.
 
 The single most error-prone and time-consuming thing about working with AWS is
 calculating an authentication signature. If you don't do it @italic{exactly}
@@ -39,34 +63,10 @@ burn many hours on this, or you can use this library.
 In addition there is help for the tedium of marshalling values into and out of
 the HTTP requests and responses.
 
-Most of the functions do not return a failure value, instead they will throw an
-@racket[exn:fail:aws].
-
 This library uses my @racket[http] library to make HTTP requests, instead of
-@racket[net/url]. Why? To support HTTP 1.1, including the @tt{Expect:
-100-continue} request header and response behavior, which is especially
-important when @tt{PUT}ting large objects to S3 buckets. If S3 is going to fail
-your request or redirect you to another URI, it is helpful for that to happen
-@italic{before} you transmit the entire entity body. Another useful feature in
-HTTP 1.1 is the @tt{Range} header, which permits us to get just a range of
-bytes from an S3 object.
-
-@subsection{Which services?}
-
-The services supported are those that are most likely to be used in an
-application, and used via an AWS API.
-
-Not supported are services like EC2 that are mainly about managing the
-``infrastructure'' for your application, such as creating servers on which to
-run. The assumption is that you can use the command line tools or web app
-console to do that. (If your application is @italic{about} managing
-infrastructure, sorry.)
-
-Also not supported is the ElastiCache service. Its application use interface is
-the @tt{memcached} protocol. The unique API that Amazon does provide, is for
-managing the infrastructure of ElastiCache, not for using it. Likewise RDS: The
-AWS API lets you create and manage database servers, but you use them in your
-application like you would any other MySQL server.
+@racket[net/url]. Why? To use HTTP 1.1 capabilities such as the @tt{Expect:
+100-continue} request header (to fail @tt{PUT} requests quickly) and the
+@tt{Range} request header (a sort of @racket[subbytes] for @tt{GET}s).
 
 @; ----------------------------------------------------------------------------
 @section{Names}
@@ -125,6 +125,10 @@ parameters. }
 @; ----------------------------------------------------------------------------
 @section{Exception handling}
 
+Most of the functions do not return a failure value. Instead they raise
+@racket[exn:fail:aws], which you need to ``catch'' using
+@racket[with-handlers].
+
 @defmodule/this-package[exn]
 
 @defstruct[exn:fail:aws (
@@ -150,15 +154,17 @@ Given an HTTP response's @racket[headers] and @racket[entity], return a
 }
 
 
-@defproc[(check-response [in input-port?][headers string?])
-(or/c string? (raise/c exn:fail:aws?))]{
+@defproc[(check-response
+[in input-port?]
+[headers string?]
+) (or/c string? (raise/c exn:fail:aws?))]{
 
-Convenience: Given an @racket[input-port?] and response headers as a
-@racket[string?] check the headers. Unless HTTP the status code is one of 200,
-206, 301, 302, or 307, read the XML response body from the port and raise an
-@racket[exn:fail:aws] constructed with information from the reponse.
-Otherwise, return @racket[headers] and the caller may read the response entity
-from @racket[in].
+Check @racket[headers]. If the status code is one of 200, 201, 202, 204, 206,
+301, 302, or 307, simply return @racket[headers] (without reading any response
+entity from @racket[in]).
+
+Otherwise, read the XML response body from @racket[in] and use the information
+to construct and raise @racket[exn:fail:aws].
 
 Note: This does @italic{not} close the input port @racket[in] before raising an
 exception. It assumes you are using @racket[call/requests],
@@ -175,13 +181,13 @@ closed!
 @defmodule/this-package[s3]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html"
-"S3"] provides a fairly simple and REST-ful interface. Putting an object to S3
-is a simple HTTP @tt{PUT} request. Getting an object is a simple @tt{GET}
-request. And so on. As a result, you may feel you don't need a lot of
-``wrapper'' around this.
+"S3"] provides a fairly simple and REST-ful interface. Uploading an object to
+S3 is an HTTP @tt{PUT} request. Download an object is a @tt{GET} request. And
+so on. As a result, you may feel you don't need a lot of ``wrapper'' around
+this.
 
-Where you @italic{definitely} will want help is in constructing the
-@tt{Authorization} header S3 uses to authenticate requests. This requires
+Where you definitely @italic{will} want help is constructing the
+@tt{Authorization} header S3 uses to authenticate requests. Doing so requires
 making a string out of specific elements of your request and ``signing'' it
 with your AWS private key. Even a small discrepancy will cause the request to
 fail authentication. As a result, @racket[aws/s3] makes it easy for you to
@@ -268,8 +274,8 @@ own.
 If you try to create a bucket with a name that is already used by
 @italic{another} AWS account, you will get a @tt{409 Conflict} response.
 
-If you create a bucket that already exists under your @italic{own} account, this
-operation is idempotent (it doesn't cause an error, it's simply a no-op).
+If you create a bucket that already exists under your @italic{own} account,
+this operation is idempotent (it's not an error, it's simply a no-op).
 
 }
 
@@ -311,8 +317,8 @@ the form @racket["bucket/path/to/resource"]):
 
 @itemize[
 @item{ name (as with @racket[ls]) }
-@item{ response headers from a @tt{HEAD} request }
-@item{ an @racket[xexpr] representing the ACL for the object }
+@item{ response headers from a @tt{HEAD} request (as with @racket[head]) }
+@item{ an @racket[xexpr] representing the ACL (as with @racket[get-acl]) }
 ]
 
 }
@@ -364,12 +370,25 @@ even OK to copy an existing object to itself.
 [heads dict? '()]
 ) xexpr?]{
 
-Make a @tt{GET} request for the ACL of @racket[racket+path] (which is the form
-@racket["bucket/path/to/resource"]). (In the REST API, this is done simply by
-appending an @racket["?acl"] query parameter.)
+Make a @tt{GET} request for the
+@hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
+"ACL"] of the object @racket[bucket+path] (which is the form
+@racket["bucket/path/to/resource"]).
 
 S3 responds with an XML representation of the ACL, which is returned as an
 @racket[xexpr?].
+
+}
+
+
+@defproc[(put-acl
+[bucket+path string?]
+[acl xexpr?]
+) void]{
+
+Make a @tt{PUT} request to set the
+@hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
+"ACL"] of the object  @racket[bucket+path] to @racket[acl].
 
 }
 
@@ -429,12 +448,6 @@ convention, e.g. @racket[subbytes]. (The HTTP @tt{Range} header specifies the
 end as @italic{in}clusive, so your @racket[range-end] argument is decremented
 to make the value for the header.)
 
-The @tt{ETag} response header from S3 is an MD5 checksum, and @racket[error]
-will be called if the received bytes do not match the MD5 checksum.  (This only
-happens if the entire object is requested. Otherwise---if the
-@racket[range-begin] and @racket[range-end] are not @racket[#f]---then the
-checksum is ignored.)
-
 The response entity is held in memory; if it is very large and you want to
 "stream" it instead, consider using @racket[get].
 
@@ -454,9 +467,6 @@ Make a @tt{GET} request for @racket[bucket+path] (which is the form
 the file specified by @racket[pathname]. The keyword arguments @racket[#:mode]
 and @racket[#:exists] are identical to those for
 @racket[call-with-output-file*].
-
-The @tt{ETag} response header from S3 is an MD5 checksum, and @racket[error]
-will be called if the received bytes do not match the MD5 checksum.
 
 You may pass request headers in the optional @racket[heads] argument.
 
@@ -497,7 +507,8 @@ response entity for a @tt{PUT} request usually isn't interesting, but you
 should read it anyway.
 
 Note: If you want a @tt{Content-MD5} request header, you must calculate and
-supply it yourself in @racket[heads].
+supply it yourself in @racket[heads]. Supplying this allows S3 to verify the
+upload integrity.
 
 To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -539,11 +550,13 @@ To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
 @margin-note{For files larger than about 100 MB, see
 @racket[multipart-put/file].}
 
+Upload the file @racket[pathname] to @racket[bucket+path].
+
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]) and copy the the request entity directly
-from the file specified by @racket[pathname].  The @racket[#:mode-flag] argument
-is identical to that for @racket[call-with-input-file*], which is used.  Returns
-the response header (unless it raises @racket[exn:fail:aws]).
+from the file specified by @racket[pathname].  The @racket[#:mode-flag]
+argument is identical to that for @racket[call-with-input-file*], which is
+used.  Returns the response header (unless it raises @racket[exn:fail:aws]).
 
 If @racket[#:mime-type] is @racket[#f], then the @tt{Content-Type} header is
 guessed from the file extension, using a (very short!) list of common
@@ -557,11 +570,11 @@ the file represented by @racket[path]. To ensure data integrity, S3 will reject
 the request if the bytes it receives do not match the MD5 checksum.
 
 A @tt{Content-Disposition} request header is automatically created from
-@racket[path]. For example if @racket[path] is @racket["/foo/bar/test.txt"] or
-@racket["c:\\foo\\bar\\test.txt"] then the header
-@racket["Content-Disposition:attachment; filename=\"test.txt\""] is created.
-This is helpful because a web browser that is given the URI for the object will
-propmt the user to download it as a file.
+@racket[pathname]. For example if @racket[pathname] is
+@racket["/foo/bar/test.txt"] or @racket["c:\\foo\\bar\\test.txt"] then the
+header @racket["Content-Disposition:attachment; filename=\"test.txt\""] is
+created.  This is helpful because a web browser that is given the URI for the
+object will prompt the user to download it as a file.
 
 To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -596,10 +609,10 @@ lets you upload it in multiple 5 MB or larger chunks, using the
 [heads dict? '()]
 ) string?]{
 
-Upload @racket[num-parts] parts where the data for each part is returned by
-the @racket[get-part] procedure you supply. (In other words, your
+Upload @racket[num-parts] parts, where the data for each part is returned by
+the @racket[get-part] procedure you supply. In other words, your
 @racket[get-part] procedure is called @racket[num-parts] times, with values
-@racket[(in-range num-parts)].)
+@racket[(in-range num-parts)].
 
 Each part must be at least 5 MB, except the last part.
 
@@ -649,14 +662,16 @@ Initiate a multipart upload and return an upload ID.
 [bstr bytes?]
 ) (cons/c (and/c exact-integer? (between/c 1 10000)) string?)]{
 
-Upload a part for the multipart upload specified by the @racket[upload-id]
+Upload one part for the multipart upload specified by the @racket[upload-id]
 returned from @racket[initiate-multipart-upload].
 
-Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
-part. (You will need to give a list of these to
-@racket[complete-multipart-upload].)
+Note that S3 part numbers start with @racket[1] (not @racket[0]).
 
 @racket[bstr] must be at least 5 MB, unless it's the last part.
+
+Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
+part. You will need to supply a list of these, one for each part, to
+@racket[complete-multipart-upload].
 
 }
 
@@ -664,13 +679,15 @@ part. (You will need to give a list of these to
 @defproc[(complete-multipart-upload
 [bucket+path string?]
 [upload-id string?]
-[parts (listof (cons/c (and/c exact-integer? (between/c 1 10000)) string?))]
+[parts-list (listof (cons/c (and/c exact-integer? (between/c 1 10000)) string?))]
 ) xexpr?]{
 
-Complete the multipart upload specified by the @racket[upload-id] returned
-from @racket[initiate-multipart-upload], and a list of the values returned
-from each @racket[upload-part].  Return S3's XML response in the form of an
-@racket[xexpr?].
+Complete the multipart upload specified the by @racket[upload-id] returned
+from @racket[initiate-multipart-upload], using a @racket[parts-list] of the
+values returned from each @racket[upload-part]. The @racket[parts-list] does
+not need to be in any particular order; it will be sorted for you.
+
+Returns S3's XML response in the form of an @racket[xexpr?].
 
 }
 
@@ -680,7 +697,7 @@ from each @racket[upload-part].  Return S3's XML response in the form of an
 [upload-id string?]
 ) void?]{
 
-Abort the multipart upload @racket[upload-id] that was started by
+Abort the multipart upload specified by the @racket[upload-id] returned from
 @racket[initiate-multipart-upload].
 
 }
