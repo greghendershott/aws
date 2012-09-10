@@ -123,9 +123,13 @@
 (define/contract/provide (get-acl bucket+path [heads '()])
   ((string?) (dict?) . ->* . xexpr?)
   (define b+p (string-append bucket+path "?acl"))
-  (get/proc b+p
-            read-entity/xexpr
-            heads))
+  (get/proc b+p read-entity/xexpr heads))
+
+(define/contract/provide (put-acl bucket+path acl)
+  (string? xexpr? . -> . void)
+  (define b+p (string-append bucket+path "?acl"))
+  (define data (string->bytes/utf-8 (xexpr->string acl)))
+  (void (put/bytes b+p data "application/xml")))
 
 (define/contract/provide (ls b+p)
   (string? . -> . (listof string?))
@@ -639,6 +643,11 @@
     (copy b+p b+p/copy)
     (check-true (member? (string-append (test/path) "-copy")
                          (ls b+p/copy)))
+
+    ;; ACL
+    (define acl (get-acl b+p))
+    (put-acl b+p acl)
+    (check-equal? (get-acl b+p) acl)
 
     ;; Multipart upload: Do with enough parts to exercise the worker
     ;; pool of 4 threads. How about 8 parts.
