@@ -29,7 +29,7 @@ Documentation is written using Racket's Scribble. The raw source is in
 [manual.scrbl](https://github.com/greghendershott/aws/blob/master/manual.scrbl).
 
 The HTML output that you'd actually want to read can be found on
-[PLaneT](http://planet.plt-scheme.org/package-source/gh/aws.plt/1/2/planet-docs/manual/index.html).
+[PLaneT](http://planet.plt-scheme.org/package-source/gh/aws.plt/1/3/planet-docs/manual/index.html).
 
 You can also generate it using `./make-doc.sh`, then point your browser to
 [file:///tmp/aws-doc/manual.html](file:///tmp/aws-doc/manual.html).
@@ -42,28 +42,33 @@ Requirements
   but are concerned about cost, keep in mind that AWS has a "free tier" for
   certain usage.)
 
-* My `http` library available on
+* My `http` library. Available on
   [Github](https://github.com/greghendershott/http) or
-  [PLaneT](http://planet.plt-scheme.org/display.ss?package=http.plt&owner=gh). 
-  You don't have to install this mannually as Racket's `(require (planet ...))`
-  should automatically install it.
+  [PLaneT](http://planet.plt-scheme.org/display.ss?package=http.plt&owner=gh).
 
 * My `sha` library available on
   [Github](https://github.com/greghendershott/sha) or
-  [PLaneT](http://planet.plt-scheme.org/display.ss?package=sha.plt&owner=gh). 
-  You don't have to install this mannually as Racket's `(require (planet ...))`
-  should automatically install it.
+  [PLaneT](http://planet.plt-scheme.org/display.ss?package=sha.plt&owner=gh).
+
+You don't have to install `http` or `sha` mannually if you install `aws` as a
+PLaneT package. Racket's `(require (planet gh/aws))` will automatically
+install them as dependenies.
 
 Unit tests
 ==========
 
-* The tests require you to specify certain personal information. See
-  `tests/example-dot-aws-tests-data` for more information.
+To simply use the library you don't need to run the unit tests. But if you
+want to run them:
+
+* The tests require you to specify certain personal information in a dot
+  file. See
+  [example-dot-aws-tests-data](https://github.com/greghendershott/aws/blob/master/tests/example-dot-aws-tests-data)
+  for more information.
 
 * The `rackunit` tests use the submodule feature added in Racket 5.3. Tests are
-  in `(module+ test ...)`.
+  inside `(module+ test ...)` forms.
 
-  * You can run the tests for a `foo.rkt` file with `raco test foo.rkt`.
+  * You can run the tests for one `foo.rkt` file with `raco test foo.rkt`.
 
   * You can run tests for all files using `raco test -x ./`.  (The `-x` flag is
     important to avoid evaluating rkt files that have no `test` module
