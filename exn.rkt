@@ -65,29 +65,16 @@
                   http-text
                   aws-code
                   aws-msg)]
-   [(bytes? e)
-    (match e
-      [(regexp "<Code>(.*?)</Code>.*?<Message>(.*?)</Message>"
-               (list _ aws-code aws-msg))
-       (exn:fail:aws (format "HTTP ~a \"~a\". AWS Code=\"~a\" Message=\"~a\""
-                             http-code http-text aws-code aws-msg)
-                     ccm
-                     ;; fields exn:fail:aws adds to exn:fail
-                     http-code
-                     http-text
-                     aws-code
-                     aws-msg)]
-      [else
-       (exn:fail:aws (format "HTTP ~a \"~a\"." http-code http-text)
-                     ccm
-                     ;; fields exn:fail:aws adds to exn:fail
-                     http-code
-                     http-text
-                     #f
-                     h)])]
-   [(xexpr? e)
-    (define aws-code (first-tag-value e 'Code))
-    (define aws-msg (first-tag-value e 'Message))
+   [else
+    (define (get x)
+      (define (rx)
+        (regexp (string-append (regexp-quote (format "<~a>" x))
+                               "(.*?)"
+                               (regexp-quote (format "</~a>" x)))))
+      (cond [(bytes? e) (let ([m (regexp-match (rx) e)]) (and m (cadr m)))]
+            [(xexpr? e) (first-tag-value e x)]))
+    (define aws-code (get 'Code))
+    (define aws-msg (get 'Message))
     (exn:fail:aws (format "HTTP ~a \"~a\". AWS Code=\"~a\" Message=\"~a\""
                           http-code http-text aws-code aws-msg)
                   ccm
