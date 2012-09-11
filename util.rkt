@@ -140,14 +140,13 @@
 ;; Like Racket alist->form-urlencoded, but:
 ;; 1. Works on any dict? (not just an association list of cons pairs).
 ;; 2. Uses RFC 3986 encoding.
+;; 3. The values can by any/c not just string?. Their ~a format is used.
 (define/contract/provide (dict->form-urlencoded xs)
   (dict? . -> . string?)
   (define (value x)
     (match x
-      [(list x) (value x)]
-      [(? string? x) x]
-      [else (error 'dict->form-urlencoded
-                   "values must be (or/c string? (list/c string?))")]))
+      [(list v) (value v)]              ;permit [k v] not just [k . v]
+      [(var v) (format "~a" v)]))
   (string-join (for/list ([(k v) (in-dict xs)])
                    (format "~a=~a"
                            k
