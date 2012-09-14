@@ -8,6 +8,7 @@
          "keys.rkt"
          "util.rkt"
          "sigv4.rkt"
+         "take-list.rkt"
          )
 
 (provide region
@@ -494,11 +495,11 @@
 ;; Given a list of hashes make an x-amz-sha256-tree-hash
 (define/contract (hashes->tree xs)
   ((listof sha256?) . -> . string?)
-  (define (hoist a b) ;sha256? (or/c sha256? #f) -> sha256?
-    (if b
-        (sha256 (bytes-append a b))
-        a))
-  (bytes->hex-string (reduce-pairs hoist xs #f)))
+  (match xs
+    [(list x) (bytes->hex-string x)]
+    [else (hashes->tree (for/list ([(a b) (in-take-list xs 2 (const #f))])
+                          (cond [b (sha256 (bytes-append a b))]
+                                [else a])))]))
 
 ;; Given bytes? make an x-amz-sha256-tree-hash
 (define/contract (tree-hash b)
@@ -543,6 +544,11 @@
   (def/run-test-suite
    (test-case
     "glacier"
+
+    (check-equal?
+     (tree-hash (make-bytes (* 4 1024 1024)))
+     "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
+
     (define vault (test/vault))
 
     (define topic-arn (create-topic (test/topic)))
