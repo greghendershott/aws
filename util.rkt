@@ -183,50 +183,25 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Process a list by calling `f' for each pair of values, and
-;; replacing the two with the single value returned by `f'. When the
-;; original list has an odd number of items, `f' is called with the
-;; last item and with the provided `missing-value'.  See check-equal
-;; tests for examples.
-(define/contract/provide (fold-pairs f xs [missing-value #f])
-  (((any/c any/c . -> . any/c) list?) (any/c) . ->* . list?)
-  (let loop ([xs xs])
-    (cond [(empty? xs)
-           '()]
-          [(empty? (cdr xs))
-           ;;(printf "fold-pairs ~a ~a\n" (car xs) last-val)
-           (cons (f (car xs) missing-value)
-                 (loop '()))]
-          [else
-           ;;(printf "fold-pairs ~a ~a\n" (car xs) (cadr xs))
-           (cons (f (car xs) (cadr xs))
-                 (loop (cddr xs)))])))
-
-;; Repeatedly call `fold-pairs' until there is just one value, and
-;; return that.
-(define/contract/provide (reduce-pairs f xs [missing-value #f])
-  (((any/c any/c . -> . any/c) list?) (any/c) . ->* . any/c)
-  (when (empty? xs)
-    (error 'reduce-pairs "expected non-empty list"))
-  (let ([xs (fold-pairs f xs missing-value)])
-    (cond [(empty? (cdr xs)) (car xs)]  ;reduced to one, the answer
-          [else (reduce-pairs f xs missing-value)])))
+(require "take-list.rkt")
 
 ;; Much like `hash' lets you supply the pairs as a flat list, `alist'
 ;; lets you do so for an association list. Saves some tedious typing
 ;; of parens and dots.
 (define/provide (alist . xs)
-  (fold-pairs cons xs))
+  (for/list ([(k v) (in-take-list xs 2)])
+    (cons k v)))
 
 (module+ test
-  (require "run-suite.rkt")
-  (def/run-test-suite
-   (check-equal? (fold-pairs cons '(1 2 3 4))   '((1 . 2) (3 . 4)))
-   (check-equal? (fold-pairs cons '(1 2 3))     '((1 . 2) (3 . #f)))
-   (check-equal? (fold-pairs cons '(1 2 3)   4) '((1 . 2) (3 . 4)))
-   (check-equal? (fold-pairs cons '(1 2 3 4) 5) '((1 . 2) (3 . 4)))
-   (check-equal? (reduce-pairs + '(1 2 3 4)) 10)
-   (check-equal? (reduce-pairs + '(1 2 3) 4) 10)
-   (check-equal? (reduce-pairs + '(1) 0) 1)
-   (check-exn exn:fail? (lambda () (reduce-pairs + '())))
-   ))
+  (define xs '([a . 1][b . 2]))
+  (check-equal? (alist 'a 1 'b 2) xs)
+  (check-equal? (apply alist '(a 1 b 2)) xs))
+
+;; Given a list of couples k0 v0 k1 v1 ... kN vN, return the k v couples
+;; where v is not #f.
+(define/provide (true-value-pairs . xs)
+  (filter-take-list (lambda (k v) v) xs))
+
+(module+ test
+  (check-equal? (true-value-pairs 'a 1 'b #f 'c 2)
+                (list 'a 1 'c 2)))
