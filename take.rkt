@@ -1,7 +1,7 @@
 #lang racket
 
-(provide in-take-list
-         filter-take-list)
+(provide in-take
+         filter-take)
 
 (module+ test
   (require rackunit))
@@ -25,15 +25,13 @@
 ;; Although the motivation for this was lists of couples, it supports
 ;; triples, quadruples -- any group size.
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (in-take-list xs n) is a way to sequence a list `n' elements at a
-;; time from `xs'. For instance with n=2 you will get successive
-;; couples of elements, with n=3 you get triples, and so on.  `n'
-;; defaults to 2.  If there aren't exactly `n' elements at the end of
-;; the list, `fill' is called. `fill' defaults to a procedure that
-;; raises an error, but you may supply a procedure that "fills in
-;; missing values".
+;; (in-take seq n) is a way to take `n' elements at a time from
+;; `seq'. For instance with n=2 you will get successive couples of
+;; elements, with n=3 you get triples, and so on.  `n' defaults to 2.
+;; If there aren't exactly `n' elements at the end of the list, `fill'
+;; is called. `fill' defaults to a procedure that raises an error, but
+;; you may supply a procedure that "fills in missing values".
 
 (struct
  take-list-iterator (xs n fill)
@@ -65,65 +63,68 @@
 
 (define fill/c (exact-nonnegative-integer? . -> . any/c))
 
-(define/contract (in-take-list xs [n 2] [fill (make-fill 'in-take-list n)])
-  ((list?) (exact-positive-integer? fill/c) . ->* . take-list?)
-  (take-list xs n fill))
+(define/contract (in-take seq [n 2] [fill (make-fill 'in-take-list n)])
+  ((sequence?) (exact-positive-integer? fill/c) . ->* . take-list?)
+  (take-list (sequence->list seq) n fill))
 
 (module+ test
   (test-case
-   "in-take-list"
-   ;; Test list is multiple of take size
-   (check-equal?
-    (for/list ([(k v) (in-take-list (list 'a "1" 'b "2"))])
-      (cons k v))
-    '([a . "1"][b . "2"]))
-   ;; Test missing values raising an error (the default)
-   (check-exn
-    exn:fail?
-    (lambda () (for/list ([(k v) (in-take-list '(a "1" b "2" c) 2)])
-            (cons k v))))
-   ;; Test missing values filled in
-   (check-equal?
-    (for/list ([(k v) (in-take-list '(a "1" b "2" c) 2 (const "FILL"))])
-      (cons k v))
-    '([a . "1"][b . "2"][c . "FILL"]))
-   ;; Test fill function passed expected "index"
-   (check-equal?
-    (for/list ([(a b c d e) (in-take-list '(0 1) 5 values)])
-      (list a b c d e))
-    '((0 1 2 3 4))) ;fill was called with 2 3 4
-   ;; Test taking the same list with different take-sizes.
-   (define (test-take-lists xs n)
-     (for/list ([ts (in-values-sequence (in-take-list xs n))])
-       ts))
+   "in-take"
+   ;; Sequence is multiple of take size
+   (check-equal? (for/list ([(k v) (in-take (list 'a "1" 'b "2"))])
+                   (cons k v))
+                 '([a . "1"][b . "2"]))
+   (check-equal? (for/list ([(k v) (in-take (vector 'a "1" 'b "2"))])
+                   (cons k v))
+                 '([a . "1"][b . "2"]))
+   (check-equal? (for/list ([(k v) (in-take "a1b2")])
+                   (cons k v))
+                 '([#\a . #\1][#\b . #\2]))
+   ;; Missing values raising an error (the default `fill')
+   (check-exn exn:fail?
+              (lambda () (for/list ([(k v) (in-take '(a "1" b "2" c) 2)])
+                      (cons k v))))
+   ;; Missing values filled in
+   (check-equal? (for/list ([(k v) (in-take '(a "1" b "2" c) 2
+                                            (const "FILL"))])
+                   (cons k v))
+                 '([a . "1"][b . "2"][c . "FILL"]))
+   ;; Fill function is passed expected "index"
+   (check-equal? (for/list ([(a b c d e) (in-take '(0 1) 5 values)])
+                   (list a b c d e))
+                 '((0 1 2 3 4))) ;fill was called with 2 3 4
+   ;; Taking the same list with different take-sizes.
    (define test-xs (list 0 1 2 3 4 5 6 7 8 9))
-   (check-equal? (test-take-lists test-xs 1)
+   (define (test-take n)
+     (for/list ([ts (in-values-sequence (in-take test-xs n))])
+       ts))
+   (check-equal? (test-take 1)
                  '((0) (1) (2) (3) (4) (5) (6) (7) (8) (9)))
-   (check-equal? (test-take-lists test-xs 2)
+   (check-equal? (test-take 2)
                  '((0 1) (2 3) (4 5) (6 7) (8 9)))
-   (check-equal? (test-take-lists test-xs 5)
+   (check-equal? (test-take 5)
                  '((0 1 2 3 4) (5 6 7 8 9)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Given a list `xs', return a similarly flat list containing only
-;; each `n' elements for which `pred?' is true.
+;; Given a sequence, return a sequence containing only each group of `n'
+;; elements for which `pred?' is true.
 
-(define/contract (filter-take-list pred? xs [n 2]
-                                   [fill (make-fill 'in-take n)])
-  ((procedure? list?) (exact-positive-integer? fill/c) . ->* . list?)
+(define/contract (filter-take pred? seq [n 2]
+                              [fill (make-fill 'in-take n)])
+  ((procedure? sequence?) (exact-positive-integer? fill/c) . ->* . list?)
   (for/fold ([ys '()])
-            ([ts (in-values-sequence (in-take-list xs n fill))])
+            ([ts (in-values-sequence (in-take seq n fill))])
     (cond [(apply pred? ts) (append ys ts)]
           [else ys])))
 
 (module+ test
   (test-case
    "filter-take-list"
-   (check-equal? (filter-take-list (lambda (a b) b) '(a 1 b #f c 3) 2)
+   (check-equal? (filter-take (lambda (a b) b) '(a 1 b #f c 3) 2)
                  '(a 1 c 3))
-   (check-equal? (filter-take-list (const #f) '(1 2 3 4) 2) '())
-   (check-equal? (filter-take-list (const #t) '() 2) '())))
+   (check-equal? (filter-take (const #f) '(1 2 3 4) 2) '())
+   (check-equal? (filter-take (const #t) '() 2) '())))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

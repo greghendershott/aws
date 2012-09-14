@@ -183,13 +183,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require "take-list.rkt")
+(require "take.rkt")
 
 ;; Much like `hash' lets you supply the pairs as a flat list, `alist'
 ;; lets you do so for an association list. Saves some tedious typing
 ;; of parens and dots.
 (define/provide (alist . xs)
-  (for/list ([(k v) (in-take-list xs 2)])
+  (for/list ([(k v) (in-take xs 2)])
     (cons k v)))
 
 (module+ test
@@ -200,7 +200,7 @@
 ;; Given a list of couples k0 v0 k1 v1 ... kN vN, return the k v couples
 ;; where v is not #f.
 (define/provide (true-value-pairs . xs)
-  (filter-take-list (lambda (k v) v) xs))
+  (filter-take (lambda (k v) v) xs))
 
 (module+ test
   (check-equal? (true-value-pairs 'a 1 'b #f 'c 2)

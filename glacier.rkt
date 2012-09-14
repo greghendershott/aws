@@ -8,7 +8,7 @@
          "keys.rkt"
          "util.rkt"
          "sigv4.rkt"
-         "take-list.rkt"
+         "take.rkt"
          )
 
 (provide region
@@ -497,7 +497,7 @@
   ((listof sha256?) . -> . string?)
   (match xs
     [(list x) (bytes->hex-string x)]
-    [else (hashes->tree (for/list ([(a b) (in-take-list xs 2 (const #f))])
+    [else (hashes->tree (for/list ([(a b) (in-take xs 2 (const #f))])
                           (cond [b (sha256 (bytes-append a b))]
                                 [else a])))]))
 
