@@ -24,8 +24,16 @@
 ;;   (for/list ([(k v) (in-take xs 2)])
 ;;     (cons k v)))
 ;;
-;; Although the motivation for this was lists of couples, it supports
-;; triples, quadruples -- any group size.
+;; Generalizing:
+;;
+;; 1. At first I wrote this for couples in lists.
+;;
+;; 2. Then I generalized it to any group size -- couples, triples,
+;; whatever -- in lists.
+;;
+;; 3. Then I generalized it to work with any single-valued sequence:
+;; list, vector, string, etc.
+
 
 (define (make-fill who n)
   (lambda (_)
