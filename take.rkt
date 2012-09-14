@@ -123,6 +123,12 @@
 ;; Given a sequence, return a sequence containing only each group of `n'
 ;; elements for which `pred?' is true.
 
+;;; ======= TO-DO ========
+;;;
+;;; Hmmm. This now takes a sequence but still returns a list.
+;;;
+;;; Should it return the same kind of sequence it was given?
+
 (define/contract (filter-take pred? seq [n 2] [fill (make-fill 'filter-take n)])
   ((procedure? sequence?) (exact-positive-integer? fill/c) . ->* . list?)
   (for/fold ([ys '()])
