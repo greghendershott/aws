@@ -1,5 +1,7 @@
 #lang racket
 
+(require racket/generator)
+
 (provide in-take
          filter-take)
 
@@ -11,7 +13,7 @@
 ;; cons pair. Using such functions can be refreshing, as you can type
 ;; simply (hash k0 v0 k1 v1) instead of all the dots and parens with
 ;; #hash([k0 . v0][k1 v2]). Using such functions is nice, but defining
-;; them is a bit awkward -- unless you have in-take-list.  It lets you
+;; them is a bit awkward -- unless you have in-take.  It lets you
 ;; sequence a flat list of items in groups of N, much like using
 ;; `take' and `drop'.
 ;;
@@ -19,43 +21,11 @@
 ;; here is a `hash'-like initializer for association lists:
 ;;
 ;; (define (alist . xs)
-;;   (for/list ([(k v) (in-take-list xs 2)])
+;;   (for/list ([(k v) (in-take xs 2)])
 ;;     (cons k v)))
 ;;
 ;; Although the motivation for this was lists of couples, it supports
 ;; triples, quadruples -- any group size.
-
-
-;; (in-take seq n) is a way to take `n' elements at a time from
-;; `seq'. For instance with n=2 you will get successive couples of
-;; elements, with n=3 you get triples, and so on.  `n' defaults to 2.
-;; If there aren't exactly `n' elements at the end of the list, `fill'
-;; is called. `fill' defaults to a procedure that raises an error, but
-;; you may supply a procedure that "fills in missing values".
-
-(struct
- take-list-iterator (xs n fill)
- #:methods gen:stream
- [(define (stream-empty? iter)
-    (match-define (take-list-iterator xs n fill) iter)
-    (or (empty? xs)                 ;exactly empty
-        (and (< (length xs) n)      ;empty-ish, so...
-             (begin (fill 0) #f)))) ;not empty unless `fill' raises exc
-  (define (stream-first iter)
-    (match-define (take-list-iterator xs n fill) iter)
-    (define len (length xs))
-    (define took (min n len))
-    (apply values (append (take xs took) (for/list ([i (in-range took n)])
-                                           (fill i)))))
-  (define (stream-rest iter)
-    (match-define (take-list-iterator xs n fill) iter)
-    (take-list-iterator (drop xs (min n (length xs))) n fill))])
-
-(struct take-list (xs n fill)
-        #:property prop:sequence
-        (lambda (c)
-          (match-define (take-list xs n fill) c)
-          (take-list-iterator xs n fill)))
 
 (define (make-fill who n)
   (lambda (_)
@@ -63,13 +33,56 @@
 
 (define fill/c (exact-nonnegative-integer? . -> . any/c))
 
-(define/contract (in-take seq [n 2] [fill (make-fill 'in-take-list n)])
-  ((sequence?) (exact-positive-integer? fill/c) . ->* . take-list?)
-  (take-list (sequence->list seq) n fill))
+;; (in-take seq n fill) is a way to take `n' elements at a time from
+;; `seq'. For instance with n=2 you will get successive couples of
+;; elements, with n=3 you get triples, and so on.  `n' defaults to 2.
+;; If there aren't exactly `n' elements at the end of the list, `fill'
+;; is called with an index from 0 to (sub1 n). `fill' defaults to a
+;; procedure that raises an error, but you may supply a procedure that
+;; "fills in missing values".
+
+(define/contract (in-take seq [n 2] [fill (make-fill 'in-take n)])
+  ((sequence?) (exact-positive-integer? fill/c) . ->* . sequence?)
+  (define (stop? . xs)
+    (match xs
+      [(list 'end rest ...) #t]
+      [else #f]))     
+  (in-producer
+   (generator ()
+              (define s (sequence->stream seq))
+              (unless (stream-empty? s)
+                (let produce ([s (sequence->stream seq)])
+                  (let consume ([s s]
+                                [i 0]
+                                [xs '()])
+                    (cond [(= i n)
+                           (apply yield xs)
+                           (unless (stream-empty? s)
+                             (produce s))]
+                          [(stream-empty? s)
+                           (apply yield (append xs
+                                                (for/list ([i (in-range i n)])
+                                                  (fill i))))]
+                          [else
+                           (consume (stream-rest s)
+                                    (add1 i)
+                                    (append xs (list (stream-first s))))]))))
+              (apply yield (make-list n 'end)))
+   stop?))
 
 (module+ test
   (test-case
    "in-take"
+   ;; Take from an empty sequence is '() (not an error)
+   (check-equal? (for/list ([(k v) (in-take (list))])
+                   (cons k v))
+                 '())
+   (check-equal? (for/list ([(k v) (in-take (vector))])
+                   (cons k v))
+                 '())
+   (check-equal? (for/list ([(k v) (in-take "")])
+                   (cons k v))
+                 '())
    ;; Sequence is multiple of take size
    (check-equal? (for/list ([(k v) (in-take (list 'a "1" 'b "2"))])
                    (cons k v))
@@ -110,8 +123,7 @@
 ;; Given a sequence, return a sequence containing only each group of `n'
 ;; elements for which `pred?' is true.
 
-(define/contract (filter-take pred? seq [n 2]
-                              [fill (make-fill 'in-take n)])
+(define/contract (filter-take pred? seq [n 2] [fill (make-fill 'filter-take n)])
   ((procedure? sequence?) (exact-positive-integer? fill/c) . ->* . list?)
   (for/fold ([ys '()])
             ([ts (in-values-sequence (in-take seq n fill))])
@@ -120,7 +132,7 @@
 
 (module+ test
   (test-case
-   "filter-take-list"
+   "filter-take"
    (check-equal? (filter-take (lambda (a b) b) '(a 1 b #f c 3) 2)
                  '(a 1 c 3))
    (check-equal? (filter-take (const #f) '(1 2 3 4) 2) '())
