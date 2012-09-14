@@ -73,12 +73,11 @@
              [name name]
              [type type]
              [id id])
-    (define d (apply dict-set*
-                     (append (list (hash))
-                             (if max-items (list 'maxitems max-items) '())
-                             (if name (list 'name name) '())
-                             (if type (list 'type type) '())
-                             (if id   (list 'type id) '()))))
+    (define d (apply dict-set* (cons (hash)
+                                     (true-value-pairs 'maxitems max-items
+                                                       'name name
+                                                       'type type
+                                                       'identifier id))))
     (define qp (dict->form-urlencoded d))
     (define p (string-append "/2012-02-29" zone-id "/rrset?" qp))
     (define u (endpoint->uri (r53-endpoint) p))
