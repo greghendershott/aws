@@ -51,10 +51,9 @@
 
 (define/contract (in-take seq [n 2] [fill (make-fill 'in-take n)])
   ((sequence?) (exact-positive-integer? fill/c) . ->* . sequence?)
+  (define the-end (gensym))
   (define (stop? . xs)
-    (match xs
-      [(list 'end rest ...) #t]
-      [else #f]))     
+    (equal? (car xs) the-end))
   (in-producer
    (generator ()
               (define s (sequence->stream seq))
@@ -75,7 +74,7 @@
                            (consume (stream-rest s)
                                     (add1 i)
                                     (append xs (list (stream-first s))))]))))
-              (apply yield (make-list n 'end)))
+              (apply yield (make-list n the-end)))
    stop?))
 
 (module+ test
