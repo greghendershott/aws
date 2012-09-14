@@ -1,8 +1,9 @@
 #lang racket
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Convenience macros to define contract and/or provide (similar to
-;; define/contract).
+
+;; Convenience macros to define, contract, and/or provide (i.e. other
+;; permutations of those, like the standard define/contract).
 
 (define-syntax define/contract/provide
   (syntax-rules ()
@@ -31,6 +32,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; NOTE: This predates racket/format and could probably be obsoleted.
+;;
 ;; (any/c ... -> string?)  Given any number of Racket identifiers or
 ;; literals, convert them to a string. Non-literals are printed as
 ;; "expression = value".  For use with e.g. log-debug which takes a
@@ -59,9 +62,10 @@
   ((xexpr/c symbol?)
    (symbol?)
    . ->* . (listof xexpr/c))
-  ;; Given an x-expression return a list of all the elements starting
-  ;; with tag, at any depth. Even if a tag is nested inside the same
-  ;; tag, so be careful using this with hierarchical XML.
+  ;; Given an xexpr return a list of all the elements starting with
+  ;; tag, at any depth. Even if a tag is nested inside the same tag,
+  ;; which is great for e.g. HTML, and convienent for certain known
+  ;; XML responses, but be careful using this with arbitrary XML.
   (define (do xpr parent)
     (cond [(empty? xpr) '()]
           [else
@@ -72,26 +76,17 @@
                   (define found? (and (equal? this-tag tag)
                                       (or (not direct-child-of)
                                           (equal? direct-child-of parent))))
-                  (append (if found?
-                              (list this-xpr)       ;found one!
-                              '())
+                  (append (cond [found? (list this-xpr)]  ;found one!
+                                [else '()])
                           (do this-xpr this-tag)    ;down
                           (do (rest xpr) parent))]  ;across
                  [else
                   (do (rest xpr) parent)])]))       ;across
   (do xpr #f))
 
-;; ;; test
-;; (define x '(root ()
-;;              (a () "a")
-;;              (a () (b () "b kid of a"))
-;;              (b () "b kid of root")))
-;; (tags x 'b)
-;; (tags x 'b 'a)
-
 (define/provide (first-tag-value x t [def #f])
-  ;; Given a (listof x-expr), return just the first elements with tag
-  ;; `t`
+  ;; Given a (listof xexpr?), return just the value of the first
+  ;; element with tag `t`.
   (match (tags x t)
     ['() def]
     [(list (list _ v) ...) (first v)]
