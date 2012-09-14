@@ -1,5 +1,8 @@
 #lang racket
 
+(module+ test
+  (require rackunit))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Convenience macros to define, contract, and/or provide (i.e. other
@@ -99,15 +102,26 @@
 ;; Former is (list/c symbol? string?), latter is (cons/c symbol? string?).
 ;; Although alists are standard Scheme/Racket fare, with xexprs we want
 ;; attribs, so will need to convert between sometimes.
-(define/provide (attribs->alist a)
-  (define (list->cons l)
-    (cons (first l) (second l)))
-  (map list->cons a))
+(define/provide (attribs->alist xs)
+  (define (list->cons xs)
+    (match xs
+      [(list k v) (cons k v)]
+      [else (error 'attribs->alist "expected list of 2 items, got ~a" xs)]))
+  (map list->cons xs))
 
-(define/provide (alist->attribs a)
-  (define (cons->list c)
-    (list (car c) (cdr c)))
-  (map cons->list a))
+(module+ test
+  (check-exn exn:fail? (lambda () (attribs->alist '([a 1 more]))))
+  (check-equal? (attribs->alist '([a 1] [b 2])) '([a . 1][b . 2])))
+
+(define/provide (alist->attribs xs)
+  (define (cons->list pr)
+    (match pr
+      [(cons k v) (list k v)]
+      [else (error 'alist->attribs "expected cons, got ~a" pr)]))
+  (map cons->list xs))
+
+(module+ test
+  (check-equal? (alist->attribs '([a . 1][b . 2])) '([a 1] [b 2])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
