@@ -51,31 +51,19 @@
 
 (define/contract (in-take seq [n 2] [fill (make-fill 'in-take n)])
   ((sequence?) (exact-positive-integer? fill/c) . ->* . sequence?)
-  (define the-end (gensym))
-  (define (stop? . xs)
-    (equal? (car xs) the-end))
-  (in-producer
-   (generator ()
-              (define s (sequence->stream seq))
-              (unless (stream-empty? s)
-                (let produce ([s (sequence->stream seq)])
-                  (let consume ([s s]
-                                [i 0]
-                                [xs '()])
-                    (cond [(= i n)
-                           (apply yield xs)
-                           (unless (stream-empty? s)
-                             (produce s))]
-                          [(stream-empty? s)
-                           (apply yield (append xs
-                                                (for/list ([i (in-range i n)])
-                                                  (fill i))))]
-                          [else
-                           (consume (stream-rest s)
-                                    (add1 i)
-                                    (append xs (list (stream-first s))))]))))
-              (apply yield (make-list n the-end)))
-   stop?))
+  (make-do-sequence                     ;Model: unstable/sequence
+   (lambda ()
+     (define-values (more? get) (sequence-generate seq))
+     (values (lambda (_)                     ;pos->element
+               (apply values (for/list ([i n])
+                               (cond [(more?) (get)]
+                                     [else (fill i)]))))
+             (lambda (_) #t)                 ;next-pos
+             #t                         ;initial-pos
+             (lambda (_) (more?))            ;continue-with-pos?
+             (lambda _ #t)                   ;continue-with-val?
+             (lambda _ #t)                   ;continue-after-pos+val?
+             ))))
 
 (module+ test
   (test-case
