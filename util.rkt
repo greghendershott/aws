@@ -200,7 +200,9 @@
 ;; Given a list of couples k0 v0 k1 v1 ... kN vN, return the k v couples
 ;; where v is not #f.
 (define/provide (true-value-pairs . xs)
-  (filter-take (lambda (k v) v) xs))
+  (flatten (for/list ([(k v) (in-take xs 2)]
+                      #:when v)
+             (list k v))))
 
 (module+ test
   (check-equal? (true-value-pairs 'a 1 'b #f 'c 2)

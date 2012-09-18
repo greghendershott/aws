@@ -2,22 +2,19 @@
 
 (require racket/generator)
 
-(provide in-take
-         filter-take)
-
-(module+ test
-  (require rackunit))
+(provide in-take)
 
 ;; Background: Functions like `hash', `hash-set*', `dict-set*' and so
 ;; on take argument couples as alternating arguments rather than a
 ;; cons pair. Using such functions can be refreshing, as you can type
 ;; simply (hash k0 v0 k1 v1) instead of all the dots and parens with
-;; #hash([k0 . v0][k1 v2]). Using such functions is nice, but defining
-;; them is a bit awkward -- unless you have in-take.  It lets you
-;; sequence a flat list of items in groups of N, much like using
-;; `take' and `drop'.
+;; #hash([k0 . v0][k1 v2]).
 ;;
-;; Likewise, this makes it easy to write simple flat wrappers. for example
+;; Using such functions is nice, but defining them is a bit awkward --
+;; unless you have in-take.  It lets you sequence a flat list of items
+;; in groups of N, much like using `take' and `drop'.
+;;
+;; Likewise, this makes it easy to write simple flat wrappers. For example
 ;; here is a `hash'-like initializer for association lists:
 ;;
 ;; (define (alist . xs)
@@ -31,9 +28,8 @@
 ;; 2. Then I generalized it to any group size -- couples, triples,
 ;; whatever -- in lists.
 ;;
-;; 3. Then I generalized it to work with any single-valued sequence:
-;; list, vector, string, etc.
-
+;; 3. Then I generalized it to any single-valued sequence: list,
+;; vector, string, etc.
 
 (define (make-fill who n)
   (lambda (_)
@@ -66,6 +62,7 @@
              ))))
 
 (module+ test
+  (require rackunit)
   (test-case
    "in-take"
    ;; Take from an empty sequence is '() (not an error)
@@ -112,32 +109,3 @@
                  '((0 1) (2 3) (4 5) (6 7) (8 9)))
    (check-equal? (test-take 5)
                  '((0 1 2 3 4) (5 6 7 8 9)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Given a sequence, return a sequence containing only each group of `n'
-;; elements for which `pred?' is true.
-
-;;; ======= TO-DO ========
-;;;
-;;; Hmmm. This now takes a sequence but still returns a list.
-;;;
-;;; Should it return the same kind of sequence it was given?
-
-(define/contract (filter-take pred? seq [n 2] [fill (make-fill 'filter-take n)])
-  ((procedure? sequence?) (exact-positive-integer? fill/c) . ->* . list?)
-  (for/fold ([ys '()])
-            ([ts (in-values-sequence (in-take seq n fill))])
-    (cond [(apply pred? ts) (append ys ts)]
-          [else ys])))
-
-(module+ test
-  (test-case
-   "filter-take"
-   (check-equal? (filter-take (lambda (a b) b) '(a 1 b #f c 3) 2)
-                 '(a 1 c 3))
-   (check-equal? (filter-take (const #f) '(1 2 3 4) 2) '())
-   (check-equal? (filter-take (const #t) '() 2) '())))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
