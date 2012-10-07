@@ -1,7 +1,5 @@
 #lang racket
 
-(require racket/generator)
-
 (provide in-take)
 
 ;; Background: Functions like `hash', `hash-set*', `dict-set*' and so
@@ -44,6 +42,11 @@
 ;; is called with an index from 0 to (sub1 n). `fill' defaults to a
 ;; procedure that raises an error, but you may supply a procedure that
 ;; "fills in missing values".
+;;
+;; Note: Just as I was finishing this, I discovered `in-slice' in
+;; racket/unstable. Although that's great as far as it goes, I've
+;; found that my optional `fill' functionality to handle missing
+;; values is very useful.
 
 (define/contract (in-take seq [n 2] [fill (make-fill 'in-take n)])
   ((sequence?) (exact-positive-integer? fill/c) . ->* . sequence?)
