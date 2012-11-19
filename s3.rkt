@@ -17,6 +17,37 @@
 (define s3-host (make-parameter "s3.amazonaws.com"))
 (provide s3-scheme s3-host)
 
+;; See http://docs.amazonwebservices.com/AmazonS3/latest/dev/BucketRestrictions.html?r=5071
+(define/contract/provide (valid-bucket-name? s [dns-compliant? #t])
+  ((string?) (boolean?) . ->* . boolean?)
+  (cond
+   [dns-compliant?
+    (and (<= 3 (string-length s)) (<= (string-length s) 63)
+         (not (regexp-match #px"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}" s))
+         (for/and ([s (regexp-split #rx"\\." s)])
+           (define (valid-first-or-last? c)
+             (or (char-lower-case? (string-ref s 0))
+                 (char-numeric? (string-ref s 0))))
+           (define (valid-mid? c)
+             (or (valid-first-or-last? c)
+                 (equal? c #\-)))
+           (define len (string-length s))
+           (and (< 0 len)
+                (valid-first-or-last? (string-ref s 0))
+                (valid-first-or-last? (string-ref s (sub1 len)))
+                (or (<= len 2)
+                    (for/and ([c (substring s 1 (sub1 len))])
+                      (valid-mid? c))))))]
+   [else
+    (and (<= (string-length s) 255)
+         (for/and ([c s])
+           (or (char-numeric? c)
+               (char-lower-case? c)
+               (char-upper-case? c)
+               (equal? c #\.)
+               (equal? c #\-)
+               (equal? c #\_))))]))
+
 ;; Use the URI format where the bucket is part of the path, not part
 ;; of the host name, because that supports bucket names that contain
 ;; capital letters.
@@ -559,6 +590,26 @@
            net/url)
 
   (def/run-test-suite
+
+    (test-case
+     "valid-bucket-name?"
+     (check-true (valid-bucket-name? "Aa1.-" #f))
+     (check-false (valid-bucket-name? "A"))
+     (check-true (valid-bucket-name? "1.1.1.1" #f))
+     (check-false (valid-bucket-name? "1.1.1.1"))
+     (check-false (valid-bucket-name? "255.255.255.255"))
+     (check-true (valid-bucket-name? "111"))
+     (check-true (valid-bucket-name? "a1a"))
+     (check-true (valid-bucket-name? "1-1"))
+     (check-false (valid-bucket-name? "-a-"))
+     ;; Examples from AWS docs
+     (check-true (valid-bucket-name? "myawsbucket"))
+     (check-true (valid-bucket-name? "my.aws.bucket"))
+     (check-true (valid-bucket-name? "myawsbucket.1"))
+     (check-false (valid-bucket-name? ".myawsbucket"))
+     (check-false (valid-bucket-name? "myawsbucket."))
+     (check-false (valid-bucket-name? "my..examplebucket")))
+
    (test-case
     "bucket+path->bucket&path&uri"
     (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
