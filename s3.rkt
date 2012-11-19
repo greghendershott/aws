@@ -17,9 +17,12 @@
 (define s3-host (make-parameter "s3.amazonaws.com"))
 (provide s3-scheme s3-host)
 
+;; Use the URI format where the bucket is part of the path, not part
+;; of the host name, because that supports bucket names that contain
+;; capital letters.
 (define/contract/provide (bucket&path->uri b p)
   (string? string? . -> . string?)
-  (string-append (s3-scheme) "://" b "." (s3-host) "/" p))
+  (string-append (s3-scheme) "://" (s3-host) "/" b "/" p))
 
 (define/contract/provide (bucket+path->bucket&path b+p)
   (string? . -> . (values string? string?))
@@ -140,7 +143,7 @@
   (let loop ([marker ""]
              [xs '()])
     (define uri (string-append
-                 (s3-scheme) "://" b "." (s3-host) "/" "?"
+                 u "?"
                  (dict->form-urlencoded
                   `((prefix ,p)
                     (marker ,marker)
@@ -561,7 +564,7 @@
     (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
     (check-equal? b "bucket")
     (check-equal? p "path/name")
-    (check-equal? u "http://bucket.s3.amazonaws.com/path/name"))
+    (check-equal? u "http://s3.amazonaws.com/bucket/path/name"))
 
    (test-case
     "canonical-amz-headers-string"
