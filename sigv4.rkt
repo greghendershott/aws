@@ -4,6 +4,8 @@
          (planet gh/aws/keys)
          (planet gh/sha))
          
+(provide aws-v4-authorization)
+
 (define/contract (canonical-request method
                                     uri
                                     heads
@@ -107,8 +109,6 @@
 ;;                       "us-east-1"
 ;;                       "s3")
                               
-(provide aws-v4-authorization)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tests
 
