@@ -12,6 +12,7 @@
           (for-label (this-package-in ses))
           (for-label (this-package-in sns))
           (for-label (this-package-in sqs))
+          (for-label (this-package-in r53))
           (for-label (this-package-in util))
           )
 
@@ -1405,6 +1406,111 @@ Delete a message from a queue. }
 @defproc[(change-message-visibility [queue-uri string?][receipt-handle string?][timeout exact-nonnegative-integer?]) void?]{
 
 Change the visibility time of a message already in a queue. }
+
+
+@; ----------------------------------------------------------------------------
+@section{Route 53 (DNS)}
+
+@defmodule/this-package[r53]
+
+@hyperlink["http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html" "Route 53"] provides DNS.
+
+
+@defparam[r53-endpoint v endpoint?]{
+
+Set the endpoint for the service. Defaults to @racket[(endpoint
+"route53.amazonaws.com" #f)].
+
+}
+
+
+@defproc[(create-hosted-zone [name string?][unique string?][comment string? ""]) xexpr?]{
+
+Create a hosted zone and return an @racket[xexpr?] respresenting the
+response XML.
+
+}
+
+
+@defproc[(delete-hosted-zone [zone-id string?]) xexpr?]{
+
+Delete a hosted zone and return an @racket[xexpr?] respresenting the
+response XML.
+
+Note that @racket[zone-id] is @italic{not} the domain name, it is the
+"zone ID".
+
+}
+
+
+@defproc[(list-hosted-zones) xexpr?]{
+
+List all the hosted zones associated with the AWS account.
+
+}
+
+
+@defproc[(get-hosted-zone [zone-id string?]) xexpr?]{
+
+Given a @racket[zone-id], return information about the hosted zone.
+
+}
+
+
+@defproc[(domain-name->zone-id [name string?]) string?]{
+
+Look up a zone ID from a domain name.
+
+AWS requires the domain name to be in DNS style and end in a period,
+such as @racket["foo.com."]. However if @racket[name] doesn't end in a
+period, then @racket[domain-name->zone-id] automatically appends one
+for you.
+
+}
+
+
+@defproc[(list-resource-record-sets
+[zone-id string?]
+[#:max-items max-items #f]
+[#:name name #f]
+[#:type type #f]
+[#:id id #f]
+) (listof xexpr?)]{
+
+Return a list of @racket[ResourceRecordSet] @racket[xexpr?]s.
+
+}
+
+
+@defproc[(change-resource-record-sets [zone-id string?][changes xexpr?]) xexpr?]{
+
+Make changes to the record sets for the the zone.
+
+It's up to the caller to create an xexpr according to
+@hyperlink["http://docs.amazonwebservices.com/Route53/latest/APIReference/API_ChangeResourceRecordSets.html"
+"the AWS docs"].
+
+Example:
+
+@racketblock[
+(change-resource-record-sets
+ "/hostedzone/Z3K3IRK2M12WGD"
+ `(ChangeResourceRecordSetsRequest
+   ([xmlns "https://route53.amazonaws.com/doc/2012-02-29/"])
+   (ChangeBatch
+    (Comment "optional comment about the changes in this change batch request")
+    (Changes (Change
+              (Action "CREATE")
+              (ResourceRecordSet (Name "foo2.com")
+                                 (Type "A")
+                                 (TTL "300")
+                                 (ResourceRecords
+                                  (ResourceRecord
+                                   (Value "1.2.3.4")))))))))
+]
+
+}
+
 
 @; ----------------------------------------------------------------------------
 @section{CloudWatch (Monitoring)}
