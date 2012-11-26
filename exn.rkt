@@ -51,11 +51,13 @@
   (log-debug (format "~a ~a" h e))
   (define http-code (extract-http-code h))
   (define http-text (extract-http-text h))
+  (define content-type (extract-field "Content-Type" h))
   (cond
    [(and (bytes? e)
-         (equal? "application/json" (extract-field "Content-Type" h)))
+         (or (equal? "application/json" content-type)
+             (equal? "application/x-amz-json-1.0" content-type)))
     (define js (bytes->jsexpr e))
-    (define aws-code (hash-ref js 'code ""))
+    (define aws-code (hash-ref js 'code (hash-ref js '__type "")))
     (define aws-msg (hash-ref js 'message ""))
     (exn:fail:aws (format "HTTP ~a \"~a\". AWS Code=\"~a\" Message=\"~a\""
                           http-code http-text aws-code aws-msg)

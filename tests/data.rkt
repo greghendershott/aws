@@ -100,3 +100,8 @@
 ;; used by glacier.rkt
 
 (def/prov test/vault)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; used by dyamo.rkt
+
+(def/prov test/dynamo-table)

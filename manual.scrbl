@@ -8,11 +8,13 @@
           (for-label (this-package-in exn))
           (for-label (this-package-in keys))
           (for-label (this-package-in s3))
-          (for-label (this-package-in sdb))
+          (for-label (rename-in (this-package-in sdb)
+                                [delete-item sdb-delete-item])
           (for-label (this-package-in ses))
           (for-label (this-package-in sns))
           (for-label (this-package-in sqs))
           (for-label (this-package-in r53))
+          (for-label (this-package-in dynamo)))
           (for-label (this-package-in util))
           )
 
@@ -1510,6 +1512,121 @@ Example:
 ]
 
 }
+
+
+@; ----------------------------------------------------------------------------
+@section{Dynamo DB}
+
+@defmodule/this-package[dynamo]
+
+@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "Dynamo"] is Amazon's newer "NoSQL" service.
+
+
+@defparam[dynamo-endpoint v endpoint?]{
+
+Set the endpoint for the service. Defaults to @racket[(endpoint
+"dynamodb.us-east-1.amazonaws.com" #f)].
+
+}
+
+
+@defparam[dynamo-region v string?]{
+
+Set the region for the service. Defaults to @racket["us-east-1"].
+
+}
+
+
+@defthing[attribute-type/c]{
+
+A contract for Dynamo attribute types. It is simply @racket[(or/c "S" "N" "B")].
+
+}
+
+
+@defproc[(create-table
+[name string?]
+[read-units exact-positive-integer?]
+[write-units exact-positive-integer?]
+[hash-key-name string?]
+[hash-key-type attribute-type/c]
+[range-key-name string? #f]
+[range-key-type attribute-type/c #f]
+) jsexpr?]{
+
+Create a table.
+
+}
+
+
+@defproc[(delete-table [name string?]) jsexpr?]{
+
+Delete a table.
+
+}
+
+
+@defproc[(describe-table [name string?]) jsexpr?]{
+
+Describe a table.
+
+}
+
+
+@defproc[(list-tables
+[#:limit limit #f]
+[#:from from #f]
+) jsexpr?]{
+
+List at most @racket[limit] tables, starting with the table name
+@racket[from] (if continuing a listing that had previously stopped at
+@racket[limit]).
+
+}
+
+
+@deftogether[(
+@defproc[(put-item [js jsexpr?]) jsexpr?]
+@defproc[(get-item [js jsexpr?]) jsexpr?]
+@defproc[(delete-item [js jsexpr?]) jsexpr?]
+@defproc[(update-item [js jsexpr?]) jsexpr?]
+@defproc[(batch-get-item [js jsexpr?]) jsexpr?]
+@defproc[(batch-write-item [js jsexpr?]) jsexpr?]
+@defproc[(query [js jsexpr?]) jsexpr?]
+@defproc[(scan [js jsexpr?]) jsexpr?]
+@defproc[(update-table [js jsexpr?]) jsexpr?]
+)]{
+
+The remaining functions accept JSON which you must construct yourself
+in the form of a @racket[jsexpr?]. The variation in the JSON is
+sufficient that wrapping them in some arbitrary Racket structure
+doesn't provide added value.  Instead, please see the Dynamo
+documentation for these similarly-named functions.
+
+@itemize[
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_PutItem.html" "put-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_GetItem.html" "get-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_DeleteItem.html" "delete-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateItem.html" "update-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchGetItems.html" "batch-get-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchWriteItem.html" "batch-write-item"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Query.html" "query"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Scan.html" "scan"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateTable.html" "update-table"]}
+
+]
+
+}
+
 
 
 @; ----------------------------------------------------------------------------

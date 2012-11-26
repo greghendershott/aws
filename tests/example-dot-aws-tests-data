@@ -54,3 +54,6 @@ test/metric = testmetric
 # THIS VAULT WILL BE CREATED (IF IF DOESN'T ALREADY EXIST) AND TEST
 # ARCHIVES WILL BE CREATED AND DELETED IN IT.
 test/vault = testvault
+
+# Name of a test table on Dynamo
+test/dynamo-table = test-dynamo-table
