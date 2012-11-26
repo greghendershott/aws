@@ -19,7 +19,11 @@ Web Services](http://aws.amazon.com/documentation/):
 * [Glacier
   archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html). _New in v1.3, 2012-08-30_
 
-* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).  _New in v1.3, 2012-08-3_
+* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).  _New in v1.3, 2012-08-30_
+
+* [Route 53](http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html). _New in v1.4, 2012-11-26_
+
+* [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html). _New in v1.4, 2012-11-26_
 
 
 Documentation
