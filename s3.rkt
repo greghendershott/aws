@@ -586,8 +586,7 @@
 ;; test
 
 (module+ test
-  (require "run-suite.rkt"
-           net/url)
+  (require "run-suite.rkt" net/url)
 
   (def/run-test-suite
 
@@ -673,6 +672,18 @@
                        (port->bytes in)))
      data)
 
+    ;; ACL
+    (define acl (get-acl b+p))
+    (put-acl b+p acl)
+    (check-equal? (get-acl b+p) acl)
+
+    ;; Copy
+    (define b+p/copy (string-append b+p "-copy"))
+    (copy b+p b+p/copy)
+    (check-true (member? (string-append (test/path) "-copy")
+                         (ls b+p/copy)))
+
+    ;; Try put/get file, both simple and multipart
     (define (put&get-file put-using p)
       (define chksum (file->Content-MD5 p))
       (put-using b+p p #:mime-type "text/plain")
@@ -686,33 +697,20 @@
                            (ls (string-append (test/bucket)
                                               "/"
                                               (substring (test/path) 0 3))))))
-
-    ;; Try put/get file, both simple and multipart
     (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
     (put&get-file put/file p)
     (put&get-file multipart-put/file p)
 
-    ;; Copy
-    (define b+p/copy (string-append b+p "-copy"))
-    (copy b+p b+p/copy)
-    (check-true (member? (string-append (test/path) "-copy")
-                         (ls b+p/copy)))
-
-    ;; ACL
-    (define acl (get-acl b+p))
-    (put-acl b+p acl)
-    (check-equal? (get-acl b+p) acl)
-
-    ;; Multipart upload: Do with enough parts to exercise the worker
-    ;; pool of 4 threads. How about 8 parts.
-    (define part-size 5MB)              ;The minimum S3 will accept
-    (define (get-part-bytes n) (make-bytes part-size n))
-    (define num-parts 8)
-    (multipart-put b+p num-parts get-part-bytes)
-    (for ([i (in-range num-parts)])
-      ;; This is also an opportunity to test Range requests ability:
-      (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
-                    (get-part-bytes i)))
+    ;; ;; Multipart upload: Do with enough parts to exercise the worker
+    ;; ;; pool of 4 threads. How about 8 parts.
+    ;; (define part-size 5MB)              ;The minimum S3 will accept
+    ;; (define (get-part-bytes n) (make-bytes part-size n))
+    ;; (define num-parts 8)
+    ;; (multipart-put b+p num-parts get-part-bytes)
+    ;; (for ([i (in-range num-parts)])
+    ;;   ;; This is also an opportunity to test Range requests ability:
+    ;;   (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+    ;;                 (get-part-bytes i)))
 
     ;; Cleanup
     (delete b+p/copy)
