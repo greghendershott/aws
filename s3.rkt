@@ -697,7 +697,10 @@
                            (ls (string-append (test/bucket)
                                               "/"
                                               (substring (test/path) 0 3))))))
-    (define p (build-path 'same "tests" "s3-test-file-to-get-and-put.txt"))
+    (define p (build-path (find-system-path 'temp-dir) "s3-test-file.txt"))
+    (with-output-to-file p
+      (lambda () (for ([i (in-range 10000)]) (displayln (random))))
+      #:exists 'replace #:mode 'text)
     (put&get-file put/file p)
     (put&get-file multipart-put/file p)
 
