@@ -105,3 +105,8 @@
 ;; used by dyamo.rkt
 
 (def/prov test/dynamo-table)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; used by r53.rkt
+
+(def/prov test/domain.com)

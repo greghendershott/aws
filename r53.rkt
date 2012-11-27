@@ -182,13 +182,16 @@
   (def/run-test-suite
     (test-case
      "Route53 create/delete hosted zone"
-     (define x (create-hosted-zone "foo.com" "unique3" "some comment"))
+     (ensure-have-keys)
+     (define x (create-hosted-zone (test/domain.com)
+                                   (format "unique-~a" (current-seconds))
+                                   "some comment"))
      (check-true (xexpr? x))
      (define zid (first-tag-value x 'Id))
      (check-true (string? zid))
      (delete-hosted-zone zid))     
     (test-case
-     "Route53"
+     "Route53 read-only record sets"
      (ensure-have-keys)
      (define zs (list-hosted-zones))
      (define zid (first-tag-value zs 'Id)) ;just grab first one

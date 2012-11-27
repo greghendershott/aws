@@ -57,3 +57,6 @@ test/vault = testvault
 
 # Name of a test table on Dynamo
 test/dynamo-table = test-dynamo-table
+
+# Name of a hosted zone on Route 53
+test/domain.com = test.com.
