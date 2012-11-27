@@ -1537,9 +1537,9 @@ Set the region for the service. Defaults to @racket["us-east-1"].
 }
 
 
-@defthing[attribute-type/c]{
+@defthing[attribute-type/c (or/c "S" "N" "B")]{
 
-A contract for Dynamo attribute types. It is simply @racket[(or/c "S" "N" "B")].
+A contract for Dynamo attribute types (string, number, base64 binary).
 
 }
 
