@@ -3,8 +3,7 @@
 (define name "aws")
 (define categories '(net))
 (define blurb
-  '("Provides support for Amazon Web Services, including"
-    " S3, SDB, SES, SNS, SQS, CloudWatch, Glacier Dynamo, Route 53."))
+  '("Provides support for Amazon Web Services, including S3, SDB, SES, SNS, SQS, CloudWatch, Glacier Dynamo, Route 53."))
 (define homepage "https://github.com/greghendershott/aws")
 
 (define release-notes
