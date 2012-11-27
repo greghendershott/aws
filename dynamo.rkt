@@ -164,7 +164,7 @@
        (define status (hash-ref (hash-ref x 'Table) 'TableStatus #f))
        (unless (equal? status "ACTIVE")
          (printf "Table status is '~a', waiting for 'ACTIVE'...\n" status)
-         (sleep 3)
+         (sleep 15)
          (loop)))
      (check-not-exn
       (lambda () (put-item (hasheq 'TableName test
