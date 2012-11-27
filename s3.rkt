@@ -168,18 +168,18 @@
 (define/contract/provide (ls b+p)
   (string? . -> . (listof string?))
   (define-values (b p u) (bucket+path->bucket&path&uri b+p))
-  ;; Ignore the path `p' when making the authorization header
-  (define h (make-date+authorization-headers (string-append b "/") "GET" '()))
   ;; Will return only ~1000 keys at a time, so loop
   (let loop ([marker ""]
              [xs '()])
-    (define uri (string-append
-                 u "?"
-                 (dict->form-urlencoded
-                  `((prefix ,p)
-                    (marker ,marker)
-                    (max-keys "1000"))) ))
-    (define xpr (call/input-request "1.1" "GET" uri h
+    ;; Ignore the path in the URI. This is an operation on the bucket.
+    ;; Instead use the path for the prefix query parameter.
+    (define qp (dict->form-urlencoded `((prefix ,p)
+                                        (marker ,marker)
+                                        (max-keys "1000"))))
+    (define uri (string-append (s3-scheme) "://" (s3-host) "/" b "/?" qp))
+    (define h (make-date+authorization-headers
+               (string-append b "/") "GET" '()))
+    (define xpr (call/input-request "1.1" "GET" uri  h
                                     (lambda (in h)
                                       (check-response in h)
                                       (read-entity/xexpr in h))))
