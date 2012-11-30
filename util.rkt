@@ -62,9 +62,7 @@
 
 (require xml)
 (define/contract/provide (tags xpr tag [direct-child-of #f])
-  ((xexpr/c symbol?)
-   (symbol?)
-   . ->* . (listof xexpr/c))
+  ((xexpr/c symbol?) ((or/c #f symbol?)) . ->* . (listof xexpr/c))
   ;; Given an xexpr return a list of all the elements starting with
   ;; tag, at any depth. Even if a tag is nested inside the same tag,
   ;; which is great for e.g. HTML, and convienent for certain known
