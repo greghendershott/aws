@@ -13,7 +13,7 @@
    . ->* .
    xexpr?)
   (define data (string->bytes/utf-8 (dict->form-urlencoded xs-post-data)))
-  (log-debug (tr "POST" data))
+  (log-aws-debug (tr "POST" data))
   (call/output-request
    "1.1" "POST" uri data #f heads
    (lambda (in h)
@@ -23,8 +23,8 @@
        [503
         (if (<= try 5)
             (let ([sleep-time (sqr try)])   ;wait longer each time
-              (log-info (format "AWS returned 503. Try ~a in ~a secs."
-                                (add1 try) sleep-time))
+              (log-aws-info (format "AWS returned 503. Try ~a in ~a secs."
+                                    (add1 try) sleep-time))
               (sleep sleep-time)
               (post-with-retry uri xs-post-data heads (add1 try)))
             (error 'post-with-retry "too many 503 retries; giving up"))]

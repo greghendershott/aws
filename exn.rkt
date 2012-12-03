@@ -48,7 +48,7 @@
 
 (define/contract/provide (header&response->exn:fail:aws h e ccm)
   (string? (or/c bytes? xexpr?) continuation-mark-set? . -> . exn:fail:aws?)
-  (log-debug (format "~a ~a" h e))
+  (log-aws-debug (format "~a ~a" h e))
   (define http-code (extract-http-code h))
   (define http-text (extract-http-text h))
   (define content-type (extract-field "Content-Type" h))

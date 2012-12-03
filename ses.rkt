@@ -59,7 +59,7 @@
 
 (define/contract/provide (send-raw-email mail-from rcpt-to raw-message)
   (string? (listof string?) string? . -> . xexpr?)
-  (log-debug raw-message)
+  (log-aws-debug raw-message)
   (define source ;use Return-Path if present else MAIL FROM
     (match raw-message
       [(regexp #rx"(?i:Return-Path:)[ ]*([^\r\n]+)" (list _ x)) x]
@@ -149,7 +149,7 @@
         (match exn
           [(exn:fail:aws _ _ 400 _ "Throttling" "Maximum sending rate exceeded.")
            (define secs (add1 (* (random) 15))) ;1-16 seconds
-           (log-warning (format "~a. Will retry in ~a seconds." exn secs))
+           (log-aws-warning (format "~a. Will retry in ~a seconds." exn secs))
            (sleep secs)
            (request params)]
           [else (raise exn)])]))))

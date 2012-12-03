@@ -37,7 +37,7 @@
                    (dict->form-urlencoded all-params)))
   (define signature (sha256-encode str-to-sign))
   (define signed-params (append all-params `((Signature ,signature))))
-  (log-debug (format "~a" signed-params))
+  (log-aws-debug (format "~a" signed-params))
   (define head
     `([Content-Type "application/x-www-form-urlencoded; charset=utf-8"]))
   (define uri (endpoint->uri (cw-endpoint) "/"))

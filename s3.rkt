@@ -329,8 +329,8 @@
    (dict?)
    . ->* . string?)
   (when (> data-len 100MB)
-    (log-warning (tr "S3 `put' where " data-len
-                     "(when > 100 MB, consider using `multipart-put')")))
+    (log-aws-warning (tr "S3 `put' where " data-len
+                         "(when > 100 MB, consider using `multipart-put')")))
   (define-values (u h)
     (uri&headers bucket+path
                  "PUT"
@@ -426,7 +426,7 @@
   (define (get-part part-num)
     ;; Each get-part does its own file open, so we're OK to
     ;; position/read the same file from multiple threads.
-    (log-debug (tr "get-part" part-num part-size num-parts))
+    (log-aws-debug (tr "get-part" part-num part-size num-parts))
     (define (read-part in)
       (file-position in (* part-num part-size))
       (read-bytes part-size in))
@@ -478,7 +478,7 @@
                          ;; Check the response XML to see if
                          ;; truly succeeded.
                          (when (first-tag-value x 'Error)
-                           (log-fatal (tr x))
+                           (log-aws-fatal (tr x))
                            (raise (header&response->exn:fail:aws
                                    h x (current-continuation-marks))))
                          x)))

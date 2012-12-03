@@ -205,3 +205,12 @@
 (module+ test
   (check-equal? (true-value-pairs 'a 1 'b #f 'c 2)
                 (list 'a 1 'c 2)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-logger aws)
+(provide log-aws-fatal
+         log-aws-error
+         log-aws-warning
+         log-aws-info
+         log-aws-debug)

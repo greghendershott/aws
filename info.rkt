@@ -14,5 +14,5 @@
 (define primary-file '("main.rkt"))
 (define scribblings '(("manual.scrbl" (multi-page))))
 
-(define required-core-version "5.3")
+(define required-core-version "5.3.1")
 (define repositories '("4.x"))

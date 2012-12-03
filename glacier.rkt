@@ -273,7 +273,7 @@
 ;; Returns #t unless it throws an exception.
 (define/contract (upload-part name upload-id offset data)
   (string? string? exact-nonnegative-integer? bytes?  . -> . void)
-  (log-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
+  (log-aws-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
   (define m "PUT")
   (define u (string-append "http://" host "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
