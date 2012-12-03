@@ -13,11 +13,11 @@
     [(_ (id . args) contract body ...)
      (begin
        (define/contract (id . args) contract body ...)
-       (provide/contract [id contract]))]
+       (provide id))]
     [(_ id contract expr)
      (begin
        (define/contract id contract expr)
-       (provide/contract [id contract]))] ))
+       (provide id))]))
 
 (define-syntax define/provide
   (syntax-rules ()
