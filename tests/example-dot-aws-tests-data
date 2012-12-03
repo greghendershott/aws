@@ -56,7 +56,9 @@ test/metric = testmetric
 test/vault = testvault
 
 # Name of a test table on Dynamo
+# THIS TABLE WILL BE CREATED AND DELETED!
 test/dynamo-table = test-dynamo-table
 
 # Name of a hosted zone on Route 53
+# THIS HOSTED ZONE WILL BE CREATED AND DELETED!
 test/domain.com = test.com.
