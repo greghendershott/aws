@@ -412,7 +412,7 @@
           (cons (format "item~a" n)
                 (batch-attribs n))))
     (check-not-exn (lambda () (batch-put-attributes (test/domain) (batch-items))))
-    (sleep 3)
+    (sleep 10)
     (for ([n (in-range batch-item-count)])
         (check-equal? (sort ;order from SDB is undetermined
                        (get-attributes (test/domain) (format "item~a" n))
@@ -421,7 +421,7 @@
     (check-not-exn
      (lambda ()
        (batch-delete-attributes (test/domain) (batch-items))))
-    (sleep 3)
+    (sleep 10)
     (for ([n (in-range batch-item-count)])
         (check-equal? (get-attributes (test/domain) (format "item~a" n)) '()))
 
