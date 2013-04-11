@@ -328,7 +328,7 @@
 ;; test
 
 (module+ test
-  (require "run-suite.rkt")
+  (require rackunit "tests/data.rkt")
   ;; Why are there `sleep's between some tests below? Because SDB has
   ;; *eventual* consistency: There may be some delay before we will get
   ;; what we just put (or *not* get what we just deleted).
@@ -349,143 +349,141 @@
     (and (equal? (item-name a) (item-name b))
          (attribs-hash=? (item-attribs a) (item-attribs b))))
 
-  (def/run-test-suite
-   (test-case
-    "domains"
-    (read-keys)
-    (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
-    (check-not-exn (lambda () (create-domain (test/domain))))
-    (sleep 1)
-    (check-true
-     (member? `(DomainName ,(test/domain)) (list-domains)))
-    (check-true
-     (member? `(ItemCount "0") (domain-metadata (test/domain))))
-    (check-not-exn (lambda () (delete-domain (test/domain)))))
+  (test-case
+   "domains"
+   (read-keys)
+   (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
+   (check-not-exn (lambda () (create-domain (test/domain))))
+   (sleep 1)
+   (check-true
+    (member? `(DomainName ,(test/domain)) (list-domains)))
+   (check-true
+    (member? `(ItemCount "0") (domain-metadata (test/domain))))
+   (check-not-exn (lambda () (delete-domain (test/domain)))))
 
-   (test-case
-    "attributes"
-    (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
-    (check-not-exn (lambda () (create-domain (test/domain))))
-    (define attribs '((BPM "130")
-                      (Genre "Disco")))
-    (check-not-exn (lambda () (put-attributes (test/domain) "item" attribs)))
-    (sleep 1)
-    (check-equal? (get-attributes (test/domain) "item")
-                  attribs)
-    (check-equal? (select (string-append "select Genre from " (test/domain)))
-                  `(((ItemName "item") (Genre "Disco"))))
-    (check-not-exn (lambda () (delete-attributes (test/domain) "item" attribs)))
-    (sleep 1)
-    (check-equal? (get-attributes (test/domain) "item")
-                  '())
+  (test-case
+   "attributes"
+   (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
+   (check-not-exn (lambda () (create-domain (test/domain))))
+   (define attribs '((BPM "130")
+                     (Genre "Disco")))
+   (check-not-exn (lambda () (put-attributes (test/domain) "item" attribs)))
+   (sleep 1)
+   (check-equal? (get-attributes (test/domain) "item")
+                 attribs)
+   (check-equal? (select (string-append "select Genre from " (test/domain)))
+                 `(((ItemName "item") (Genre "Disco"))))
+   (check-not-exn (lambda () (delete-attributes (test/domain) "item" attribs)))
+   (sleep 1)
+   (check-equal? (get-attributes (test/domain) "item")
+                 '())
 
-    (define cnt 25)
-    (for ([n (in-range cnt)])
-        (check-not-exn
-         (lambda ()
-           (put-attributes (test/domain)
+   (define cnt 25)
+   (for ([n (in-range cnt)])
+     (check-not-exn
+      (lambda ()
+        (put-attributes (test/domain)
+                        (format "Item~a" n)
+                        `((n ,(format "~a" n)))))))
+   (for ([n (in-range cnt)])
+     (check-equal? (get-attributes (test/domain) (format "Item~a" n))
+                   `((n ,(format "~a" n)))))
+   (check-equal? (select (string-append "SELECT Count(*) FROM " (test/domain)))
+                 `(((ItemName "Domain") (Count ,(format "~a" cnt)))))
+   (for ([n (in-range cnt)])
+     (check-not-exn
+      (lambda ()
+        (delete-attributes (test/domain)
                            (format "Item~a" n)
                            `((n ,(format "~a" n)))))))
-    (for ([n (in-range cnt)])
-        (check-equal? (get-attributes (test/domain) (format "Item~a" n))
-                      `((n ,(format "~a" n)))))
-    (check-equal? (select (string-append "SELECT Count(*) FROM " (test/domain)))
-                  `(((ItemName "Domain") (Count ,(format "~a" cnt)))))
-    (for ([n (in-range cnt)])
-        (check-not-exn
-         (lambda ()
-           (delete-attributes (test/domain)
-                              (format "Item~a" n)
-                              `((n ,(format "~a" n)))))))
-    (for ([n (in-range cnt)])
-        (check-equal? (get-attributes (test/domain) (format "Item~a" n))
-                      '()))
+   (for ([n (in-range cnt)])
+     (check-equal? (get-attributes (test/domain) (format "Item~a" n))
+                   '()))
 
-    ;; BatchXxxAttributes
-    (define (batch-attribs n)
-      (for/list ([i (in-range 50)])
-          (list (string->symbol (format "key/~a/~a" n i))
-                (format "val/~a/~a" n i))))
-    (define batch-item-count 25)
-    (define (batch-items)
-      (for/list ([n (in-range batch-item-count)])
-          (cons (format "item~a" n)
-                (batch-attribs n))))
-    (check-not-exn (lambda () (batch-put-attributes (test/domain) (batch-items))))
-    (sleep 10)
-    (for ([n (in-range batch-item-count)])
-        (check-equal? (sort ;order from SDB is undetermined
-                       (get-attributes (test/domain) (format "item~a" n))
-                       attrib<?)
-                      (sort (batch-attribs n) attrib<?)))
-    (check-not-exn
-     (lambda ()
-       (batch-delete-attributes (test/domain) (batch-items))))
-    (sleep 10)
-    (for ([n (in-range batch-item-count)])
-        (check-equal? (get-attributes (test/domain) (format "item~a" n)) '()))
+   ;; BatchXxxAttributes
+   (define (batch-attribs n)
+     (for/list ([i (in-range 50)])
+       (list (string->symbol (format "key/~a/~a" n i))
+             (format "val/~a/~a" n i))))
+   (define batch-item-count 25)
+   (define (batch-items)
+     (for/list ([n (in-range batch-item-count)])
+       (cons (format "item~a" n)
+             (batch-attribs n))))
+   (check-not-exn (lambda () (batch-put-attributes (test/domain) (batch-items))))
+   (sleep 10)
+   (for ([n (in-range batch-item-count)])
+     (check-equal? (sort ;order from SDB is undetermined
+                    (get-attributes (test/domain) (format "item~a" n))
+                    attrib<?)
+                   (sort (batch-attribs n) attrib<?)))
+   (check-not-exn
+    (lambda ()
+      (batch-delete-attributes (test/domain) (batch-items))))
+   (sleep 10)
+   (for ([n (in-range batch-item-count)])
+     (check-equal? (get-attributes (test/domain) (format "item~a" n)) '()))
 
-    ;; hash style
-    (define attribs/hash (hash 'bpm   (set "100")
-                               'genre (set "Rock" "Metal")))
-    (check-not-exn
-     (lambda () (put-attributes-hash (test/domain) "itemHash" attribs/hash)))
-    (sleep 1)
-    (check-true
-     (attribs-hash=? (get-attributes-hash (test/domain) "itemHash")
-                     attribs/hash))
-    (check-true
-     (item=? (car (select-hash
-                   (format "select * from ~a where ItemName() = 'itemHash'"
-                           (test/domain))))
-             (item "itemHash" attribs/hash)))
+   ;; hash style
+   (define attribs/hash (hash 'bpm   (set "100")
+                              'genre (set "Rock" "Metal")))
+   (check-not-exn
+    (lambda () (put-attributes-hash (test/domain) "itemHash" attribs/hash)))
+   (sleep 1)
+   (check-true
+    (attribs-hash=? (get-attributes-hash (test/domain) "itemHash")
+                    attribs/hash))
+   (check-true
+    (item=? (car (select-hash
+                  (format "select * from ~a where ItemName() = 'itemHash'"
+                          (test/domain))))
+            (item "itemHash" attribs/hash)))
 
-    (check-not-exn (lambda () (delete-domain (test/domain)))))
+   (check-not-exn (lambda () (delete-domain (test/domain)))))
 
-   (test-case
-    "400 errors"
-    ;; Check it raises an exn:fail:aws when domain doesn't exist
-    (define bad-domain-msg "The specified domain does not exist.")
-    (define-syntax-rule (400-error? expr)
-      (check-true
-       (with-handlers
-           ([exn:fail:aws?
-             (lambda (exn)
-               (match exn
-                 [(exn:fail:aws _
-                                _
-                                400
-                                "Bad Request"
-                                "NoSuchDomain"
-                                "The specified domain does not exist.")
-                  #t]
-                 [else #f]))])
-         ;; We expect expr to raise an exception. Return #f if it doesn't
-         (begin expr #f))))
-    (400-error? (select "SELECT Count(*) FROM barf"))
-    (400-error? (select "SELECT Count(*) FROM barf"))
-    (400-error? (put-attributes "barf" "item" '((key "val"))))
-    (400-error? (get-attributes "barf" "item"))
-    (400-error? (delete-attributes "barf" "item" '((key "val")))) )
+  (test-case
+   "400 errors"
+   ;; Check it raises an exn:fail:aws when domain doesn't exist
+   (define bad-domain-msg "The specified domain does not exist.")
+   (define-syntax-rule (400-error? expr)
+     (check-true
+      (with-handlers
+          ([exn:fail:aws?
+            (lambda (exn)
+              (match exn
+                [(exn:fail:aws _
+                               _
+                               400
+                               "Bad Request"
+                               "NoSuchDomain"
+                               "The specified domain does not exist.")
+                 #t]
+                [else #f]))])
+        ;; We expect expr to raise an exception. Return #f if it doesn't
+        (begin expr #f))))
+   (400-error? (select "SELECT Count(*) FROM barf"))
+   (400-error? (select "SELECT Count(*) FROM barf"))
+   (400-error? (put-attributes "barf" "item" '((key "val"))))
+   (400-error? (get-attributes "barf" "item"))
+   (400-error? (delete-attributes "barf" "item" '((key "val")))) )
 
-   (test-case
-    "int<->str"
-    ;; u8
-    (check-equal? (str->int/u8 (int->str/u8 0)) 0)
-    (check-equal? (str->int/u8 (int->str/u8 (expt 2 8))) (expt 2 8))
-    ;; s8
-    (check-equal? (str->int/s8 (int->str/s8 (- (expt 2 7)))) (- (expt 2 7)))
-    (check-equal? (str->int/s8 (int->str/s8 (+ (expt 2 7)))) (+ (expt 2 7)))
-    ;; u16
-    (check-equal? (str->int/u16 (int->str/u16 0)) 0)
-    (check-equal? (str->int/u16 (int->str/u16 (expt 2 16))) (expt 2 16))
-    ;; s16
-    (check-equal? (str->int/s16 (int->str/s16 (- (expt 2 15)))) (- (expt 2 15)))
-    (check-equal? (str->int/s16 (int->str/s16 (+ (expt 2 15)))) (+ (expt 2 15)))
-    ;; u32
-    (check-equal? (str->int/u32 (int->str/u32 0)) 0)
-    (check-equal? (str->int/u32 (int->str/u32 (expt 2 32))) (expt 2 32))
-    ;; s32
-    (check-equal? (str->int/s32 (int->str/s32 (- (expt 2 31)))) (- (expt 2 31)))
-    (check-equal? (str->int/s32 (int->str/s32 (+ (expt 2 31)))) (+ (expt 2 31))))
-   ))
+  (test-case
+   "int<->str"
+   ;; u8
+   (check-equal? (str->int/u8 (int->str/u8 0)) 0)
+   (check-equal? (str->int/u8 (int->str/u8 (expt 2 8))) (expt 2 8))
+   ;; s8
+   (check-equal? (str->int/s8 (int->str/s8 (- (expt 2 7)))) (- (expt 2 7)))
+   (check-equal? (str->int/s8 (int->str/s8 (+ (expt 2 7)))) (+ (expt 2 7)))
+   ;; u16
+   (check-equal? (str->int/u16 (int->str/u16 0)) 0)
+   (check-equal? (str->int/u16 (int->str/u16 (expt 2 16))) (expt 2 16))
+   ;; s16
+   (check-equal? (str->int/s16 (int->str/s16 (- (expt 2 15)))) (- (expt 2 15)))
+   (check-equal? (str->int/s16 (int->str/s16 (+ (expt 2 15)))) (+ (expt 2 15)))
+   ;; u32
+   (check-equal? (str->int/u32 (int->str/u32 0)) 0)
+   (check-equal? (str->int/u32 (int->str/u32 (expt 2 32))) (expt 2 32))
+   ;; s32
+   (check-equal? (str->int/s32 (int->str/s32 (- (expt 2 31)))) (- (expt 2 31)))
+   (check-equal? (str->int/s32 (int->str/s32 (+ (expt 2 31)))) (+ (expt 2 31)))))

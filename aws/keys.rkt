@@ -1,7 +1,7 @@
 #lang racket
 
 (require net/base64
-         (planet gh/sha)
+         sha
          "util.rkt")
 
 ;; These parameters hold the AWS keys. Set them before using functions

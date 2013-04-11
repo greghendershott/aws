@@ -1,7 +1,7 @@
 #lang racket
 
-(require (planet gh/http/request)
-         (planet gh/http/head)
+(require http/request
+         http/head
          net/head
          json
          xml

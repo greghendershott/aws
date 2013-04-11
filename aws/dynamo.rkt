@@ -2,8 +2,8 @@
 
 (require net/base64
          json
-         (planet gh/http/request)
-         (planet gh/http/head)
+         http/request
+         http/head
          "keys.rkt"
          "exn.rkt"
          "util.rkt"
@@ -149,32 +149,31 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require "run-suite.rkt")
-  (def/run-test-suite
-    (test-case
-     "dynamo"
-     (define test (test/dynamo-table))
-     (check-not-exn (lambda () (create-table test 1 1
-                                        "HashKey" "S"
-                                        "RangeKey" "S")))
-     (check-not-exn (lambda () (list-tables #:limit 10)))
-     (check-not-exn (lambda () (describe-table test)))
-     (let loop ()
-       (define x (describe-table test))
-       (define status (hash-ref (hash-ref x 'Table) 'TableStatus #f))
-       (unless (equal? status "ACTIVE")
-         (printf "Table status is '~a', waiting for 'ACTIVE'...\n" status)
-         (sleep 15)
-         (loop)))
-     (check-not-exn
-      (lambda () (put-item (hasheq 'TableName test
-                              'Item (hasheq 'HashKey (hasheq 'S "Hi")
-                                            'RangeKey (hasheq 'S "world")
-                                            'Foo (hasheq 'S "bar"))))))
-     (sleep 2)
-     (define js
-       (get-item (hasheq 'TableName test
-                         'Key (hasheq 'HashKeyElement (hasheq 'S "Hi")
-                                      'RangeKeyElement (hasheq 'S "world")))))
-     (check-equal? (hash-ref (hash-ref js 'Item) 'Foo) (hasheq 'S "bar"))
-     (check-not-exn (lambda () (delete-table test))))))
+  (require rackunit "tests/data.rkt")
+  (test-case
+   "dynamo"
+   (define test (test/dynamo-table))
+   (check-not-exn (lambda () (create-table test 1 1
+                                      "HashKey" "S"
+                                      "RangeKey" "S")))
+   (check-not-exn (lambda () (list-tables #:limit 10)))
+   (check-not-exn (lambda () (describe-table test)))
+   (let loop ()
+     (define x (describe-table test))
+     (define status (hash-ref (hash-ref x 'Table) 'TableStatus #f))
+     (unless (equal? status "ACTIVE")
+       (printf "Table status is '~a', waiting for 'ACTIVE'...\n" status)
+       (sleep 15)
+       (loop)))
+   (check-not-exn
+    (lambda () (put-item (hasheq 'TableName test
+                            'Item (hasheq 'HashKey (hasheq 'S "Hi")
+                                          'RangeKey (hasheq 'S "world")
+                                          'Foo (hasheq 'S "bar"))))))
+   (sleep 2)
+   (define js
+     (get-item (hasheq 'TableName test
+                       'Key (hasheq 'HashKeyElement (hasheq 'S "Hi")
+                                    'RangeKeyElement (hasheq 'S "world")))))
+   (check-equal? (hash-ref (hash-ref js 'Item) 'Foo) (hasheq 'S "bar"))
+   (check-not-exn (lambda () (delete-table test)))))

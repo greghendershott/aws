@@ -2,8 +2,8 @@
 
 (require xml
          net/base64
-         (planet gh/http/request)
-         (planet gh/http/head)
+         http/request
+         http/head
          "exn.rkt"
          "util.rkt")
 

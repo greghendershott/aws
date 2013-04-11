@@ -1,7 +1,7 @@
 #lang racket
 
-(require (planet gh/http)
-         (planet gh/sha)
+(require http
+         sha
          json
          net/head
          "exn.rkt"
@@ -538,59 +538,56 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require "run-suite.rkt"
-           (planet gh/aws/sns))
+  (require rackunit "tests/data.rkt" "sns.rkt")
+  (test-case
+   "glacier"
 
-  (def/run-test-suite
-   (test-case
-    "glacier"
+   (check-equal?
+    (tree-hash (make-bytes (* 4 1024 1024)))
+    "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
 
-    (check-equal?
-     (tree-hash (make-bytes (* 4 1024 1024)))
-     "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
+   (define vault (test/vault))
 
-    (define vault (test/vault))
+   (define topic-arn (create-topic (test/topic)))
 
-    (define topic-arn (create-topic (test/topic)))
+   (check-true (create-vault vault))
+   (check-true (for/or ([x (in-list (list-vaults))])
+                 (define name (hash-ref x 'VaultName #f))
+                 (and name (string=? name vault))))
 
-    (check-true (create-vault vault))
-    (check-true (for/or ([x (in-list (list-vaults))])
-                    (define name (hash-ref x 'VaultName #f))
-                  (and name (string=? name vault))))
+   (define id #f)
 
-    (define id #f)
+   (check-not-exn
+    (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
+   (check-true (delete-archive vault id))
 
-    (check-not-exn
-     (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
-    (check-true (delete-archive vault id))
+   (check-not-exn
+    (lambda ()
+      (set! id (create-archive vault "description"
+                               (make-bytes (+ 3 (* 4 1MB)))))))
+   (check-true (delete-archive vault id))
 
-    (check-not-exn
-     (lambda ()
-       (set! id (create-archive vault "description"
-                                (make-bytes (+ 3 (* 4 1MB)))))))
-    (check-true (delete-archive vault id))
+   (check-not-exn
+    (lambda ()
+      (set! id (create-archive/multipart-upload vault "description" 1MB
+                                                (make-bytes (+ 3 (* 4 1MB)))))))
+   (check-true (delete-archive vault id))
 
-    (check-not-exn
-     (lambda ()
-       (set! id (create-archive/multipart-upload vault "description" 1MB
-                                                 (make-bytes (+ 3 (* 4 1MB)))))))
-    (check-true (delete-archive vault id))
+   (check-not-exn
+    (lambda ()
+      (set! id (create-archive-from-file vault
+                                         (build-path 'same "manual.scrbl")))))
+   (check-true (delete-archive vault id))
 
-    (check-not-exn
-     (lambda ()
-       (set! id (create-archive-from-file vault
-                                          (build-path 'same "manual.scrbl")))))
-    (check-true (delete-archive vault id))
+   ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
+   ;; complete, so it's impractical for our unit test to check the SNS
+   ;; topic. Furthermore, retrieve-inventory may fail during the first 24
+   ;; hours after a vault is created, because Amazon Glacier hasn't
+   ;; created an initial inventory yet. Gah.
 
-    ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
-    ;; complete, so it's impractical for our unit test to check the SNS
-    ;; topic. Furthermore, retrieve-inventory may fail during the first 24
-    ;; hours after a vault is created, because Amazon Glacier hasn't
-    ;; created an initial inventory yet. Gah.
+   ;; (define job-id (retrieve-inventory vault "" topic-arn))
+   ;; (list-jobs)
 
-    ;; (define job-id (retrieve-inventory vault "" topic-arn))
-    ;; (list-jobs)
-
-    (check-not-exn
-     (lambda () (set-vault-notifications vault topic-arn #t #t)))
-    )))
+   (check-not-exn
+    (lambda () (set-vault-notifications vault topic-arn #t #t)))
+   ))

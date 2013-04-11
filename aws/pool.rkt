@@ -76,23 +76,22 @@
                       (sub1 n))])))
 
 (module+ test
-  (require "run-suite.rkt")
-  (def/run-test-suite
-    (test-case
-     "worker pool"
-     (define (try num-threads num-jobs)
-       (define results
-         (with-worker-pool
-          num-threads
-          (lambda (pool)
-            (for ([i (in-range num-jobs)])
-              (add-job pool (lambda () (sleep (random)) i)))
-            (get-results pool num-jobs))))
-       (check-equal? (sort results <)
-                     (for/list ([i (in-range num-jobs)])
-                       i)))
-     ;; Try a few permutations of threads and jobs.
-     (try 4 20)
-     (try 1 10)
-     (try 10 1)
-     )))
+  (require rackunit)
+  (test-case
+   "worker pool"
+   (define (try num-threads num-jobs)
+     (define results
+       (with-worker-pool
+        num-threads
+        (lambda (pool)
+          (for ([i (in-range num-jobs)])
+            (add-job pool (lambda () (sleep (random)) i)))
+          (get-results pool num-jobs))))
+     (check-equal? (sort results <)
+                   (for/list ([i (in-range num-jobs)])
+                     i)))
+   ;; Try a few permutations of threads and jobs.
+   (try 4 20)
+   (try 1 10)
+   (try 10 1)
+   ))

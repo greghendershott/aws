@@ -1,2 +1,2 @@
 #lang setup/infotab
-(define deps '("http"))
+(define deps '("http" "sha"))

@@ -1,7 +1,7 @@
 #lang racket
 
 (require xml
-         (planet gh/http/request)
+         http/request
          "util.rkt"
          "keys.rkt"
          "exn.rkt"
@@ -151,27 +151,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require "run-suite.rkt")
-  (def/run-test-suite
-   (test-case
-    "sqs"
-    (read-keys)
-    (define q-uri (create-queue (test/queue)))
-    (regexp-match? (regexp (string-append "/" q-uri "$")) q-uri)
-    (list-queues)
-    (check-equal? (get-queue-uri (test/queue)) q-uri)
-    (get-queue-attributes q-uri)
-    (define msg-body "Hello, world.")
-    (send-message q-uri msg-body)
-    (sleep 10.0) ;may take awhile for this to become available
-    (define xsm (receive-messages q-uri 1))
-    (check-true (not (empty? xsm)))
-    (define m (first xsm))
-    (check-equal? (message-body m) msg-body)
-    (define rh (message-receipt-handle m))
-    (change-message-visibility q-uri rh 10)
-    (delete-message q-uri rh)
-    ;; SQS will fail this if you delete a queue more than once < 60 seconds
-    ;; So if you re-run this test too quickly, it may fail for that reason.
-    (delete-queue q-uri))
-   (void)))
+  (require rackunit "tests/data.rkt")
+  (test-case
+   "sqs"
+   (read-keys)
+   (define q-uri (create-queue (test/queue)))
+   (regexp-match? (regexp (string-append "/" q-uri "$")) q-uri)
+   (list-queues)
+   (check-equal? (get-queue-uri (test/queue)) q-uri)
+   (get-queue-attributes q-uri)
+   (define msg-body "Hello, world.")
+   (send-message q-uri msg-body)
+   (sleep 10.0) ;may take awhile for this to become available
+   (define xsm (receive-messages q-uri 1))
+   (check-true (not (empty? xsm)))
+   (define m (first xsm))
+   (check-equal? (message-body m) msg-body)
+   (define rh (message-receipt-handle m))
+   (change-message-visibility q-uri rh 10)
+   (delete-message q-uri rh)
+   ;; SQS will fail this if you delete a queue more than once < 60 seconds
+   ;; So if you re-run this test too quickly, it may fail for that reason.
+   (delete-queue q-uri))
+  (void))

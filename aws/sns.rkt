@@ -1,8 +1,8 @@
 #lang racket
 
 (require xml
-         (planet gh/http/request)
-         (planet gh/http/head)
+         http/request
+         http/head
          "util.rkt"
          "keys.rkt"
          "exn.rkt"
@@ -155,27 +155,23 @@
 ;; test
 
 (module+ test
-  (require "run-suite.rkt")
-
+  (require rackunit "tests/data.rkt")
   (define (member? x xs)
     (not (not (member x xs))))
-
-  (def/run-test-suite
-   (test-case
-    "sns"
-    (read-keys)
-    (define arn (create-topic (test/topic)))
-    (check-true (member? arn (list-topics)))
-    (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
-                  (cons 'TopicArn arn))
-    (check-equal? (subscribe (test/recipient) "email" arn)
-                  "pending confirmation")
-    (publish arn "Test" #:subject "Test")
-    (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
-    (delete-topic arn)
-    (check-false (member? arn (list-topics)))
-    (void))
-   ))
+  (test-case
+   "sns"
+   (read-keys)
+   (define arn (create-topic (test/topic)))
+   (check-true (member? arn (list-topics)))
+   (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
+                 (cons 'TopicArn arn))
+   (check-equal? (subscribe (test/recipient) "email" arn)
+                 "pending confirmation")
+   (publish arn "Test" #:subject "Test")
+   (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
+   (delete-topic arn)
+   (check-false (member? arn (list-topics)))
+   (void)))
 
 ;; Unfortunately it will be hard to write tests for most other SNS
 ;; functionality because they require a subscription to be confirmed
