@@ -7,8 +7,8 @@
 (define homepage "https://github.com/greghendershott/aws")
 
 (define release-notes
-  '((p "Add support for Dynamo and Route 53.")))
-(define version "2012-11-27")
+  '((p "Use Racket's new define-logger.")))
+(define version "2013-04-11")
 (define can-be-loaded-with 'all)
 
 (define primary-file '("main.rkt"))
