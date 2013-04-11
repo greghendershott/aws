@@ -1,26 +1,19 @@
 #lang scribble/manual
 
-@(require planet/scribble
-          (for-label racket)
+@(require (for-label racket)
           (for-label net/head)
           (for-label json)
-          (for-label (this-package-in cw))
-          (for-label (this-package-in exn))
-          (for-label (this-package-in keys))
-          (for-label (this-package-in s3))
-          (for-label (rename-in (this-package-in sdb)
-                                [delete-item sdb-delete-item])
-          (for-label (this-package-in ses))
-          (for-label (this-package-in sns))
-          (for-label (this-package-in sqs))
-          (for-label (this-package-in r53))
-          (for-label (this-package-in dynamo)))
-          (for-label (this-package-in util))
-          )
-
-@title{Amazon Web Services}
-
-@table-of-contents{}
+          (for-label "cw.rkt")
+          (for-label "exn.rkt")
+          (for-label "keys.rkt")
+          (for-label "s3.rkt")
+          (for-label (rename-in "sdb.rkt" [delete-item sdb-delete-item]))
+          (for-label "ses.rkt")
+          (for-label "sns.rkt")
+          (for-label "sqs.rkt")
+          (for-label "r53.rkt")
+          (for-label "dynamo.rkt")
+          (for-label "util.rkt"))
 
 @; ----------------------------------------------------------------------------
 @section{Introduction}
@@ -90,7 +83,7 @@ prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
 @; ----------------------------------------------------------------------------
 @section{AWS Keys}
 
-@defmodule/this-package[keys]
+@defmodule[keys]
 
 @defparam[public-key key string?]{
 
@@ -132,7 +125,7 @@ Most of the functions do not return a failure value. Instead they raise
 @racket[exn:fail:aws], which you need to ``catch'' using
 @racket[with-handlers].
 
-@defmodule/this-package[exn]
+@defmodule[exn]
 
 @defstruct[exn:fail:aws (
 [http-code exact-positive-integer?]
@@ -181,7 +174,7 @@ closed!
 @; ----------------------------------------------------------------------------
 @section{S3 (Storage)}
 
-@defmodule/this-package[s3]
+@defmodule[s3]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html"
 "S3"] provides a fairly simple and REST-ful interface. Uploading an object to
@@ -764,7 +757,7 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
 @; ----------------------------------------------------------------------------
 @section{SDB (Database)}
 
-@defmodule/this-package[sdb]
+@defmodule[sdb]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html"
 "SimpleDB"] is a ``schema-less'' database. You should review the SDB docs to
@@ -1115,7 +1108,7 @@ the values we set are available to get.
 @; ----------------------------------------------------------------------------
 @section{SES (Email)}
 
-@defmodule/this-package[ses]
+@defmodule[ses]
 
 Please refer to the
 @hyperlink["http://docs.amazonwebservices.com/ses/latest/DeveloperGuide/Welcome.html"
@@ -1238,7 +1231,7 @@ be able to support them by setting the @tt{Action} parameter.}
 @; ----------------------------------------------------------------------------
 @section{SNS (Notifications)}
 
-@defmodule/this-package[sns]
+@defmodule[sns]
 
 
 @hyperlink["http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480"
@@ -1336,7 +1329,7 @@ then @racket[message] must be valid JSON or SNS will return an error.
 @; ----------------------------------------------------------------------------
 @section{SQS (Queues)}
 
-@defmodule/this-package[sqs]
+@defmodule[sqs]
 
 @hyperlink["http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html" "SQS"] provides distributed queues.
 
@@ -1413,7 +1406,7 @@ Change the visibility time of a message already in a queue. }
 @; ----------------------------------------------------------------------------
 @section{Route 53 (DNS)}
 
-@defmodule/this-package[r53]
+@defmodule[r53]
 
 @hyperlink["http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html" "Route 53"] provides DNS.
 
@@ -1517,7 +1510,7 @@ Example:
 @; ----------------------------------------------------------------------------
 @section{Dynamo DB}
 
-@defmodule/this-package[dynamo]
+@defmodule[dynamo]
 
 @hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "Dynamo"] is Amazon's newer "NoSQL" service.
 
@@ -1632,7 +1625,7 @@ documentation for these similarly-named functions.
 @; ----------------------------------------------------------------------------
 @section{CloudWatch (Monitoring)}
 
-@defmodule/this-package[cw]
+@defmodule[cw]
 
 Among the Amazon Web Services, the
 @hyperlink["http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html"
@@ -1878,7 +1871,7 @@ Return the history for alarms meeting the criteria.
 @; ----------------------------------------------------------------------------
 @section{Glacier (Archives)}
 
-@defmodule/this-package[glacier]
+@defmodule[glacier]
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html"
 "Glacier"] provides storage for archiving. You can store objects less
@@ -2141,7 +2134,7 @@ This example can be found in @tt{examples/backup.rkt}.
 @section{Utilities}
 
 
-@defmodule/this-package[util]
+@defmodule[util]
 
 Although the following are mainly for internal use, they're @racket[provide]d
 in case you find them helpful.
