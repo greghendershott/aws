@@ -29,34 +29,20 @@ Web Services](http://aws.amazon.com/documentation/):
 Documentation
 =============
 
-Documentation is written using Racket's Scribble. The raw source is in
-[manual.scrbl](https://github.com/greghendershott/aws/blob/master/manual.scrbl).
-
-The HTML output that you'd actually want to read can be found on
-[PLaneT](http://planet.plt-scheme.org/package-source/gh/aws.plt/1/3/planet-docs/manual/index.html).
-
-You can also generate it using `./make-doc.sh`, then point your browser to
-[file:///tmp/aws-doc/manual.html](file:///tmp/aws-doc/manual.html).
-
+[Reference documentation](https://github.com/greghendershott/aws/blob/master/aws/manual.md).
 
 Requirements
 ============
 
-* The access keys for an Amazon Web Services account. (If you want to experiment
-  but are concerned about cost, keep in mind that AWS has a "free tier" for
-  certain usage.)
+* The access keys for an Amazon Web Services account. (If you want to
+  experiment but are concerned about cost, keep in mind that AWS has a
+  "free tier" for certain usage.)
 
-* My `http` library. Available on
-  [Github](https://github.com/greghendershott/http) or
-  [PLaneT](http://planet.plt-scheme.org/display.ss?package=http.plt&owner=gh).
+* My `http` library. Install: `raco pkg install
+  http`. [Source](https://github.com/greghendershott/http).
 
-* My `sha` library available on
-  [Github](https://github.com/greghendershott/sha) or
-  [PLaneT](http://planet.plt-scheme.org/display.ss?package=sha.plt&owner=gh).
-
-You don't have to install `http` or `sha` mannually if you install `aws` as a
-PLaneT package. Racket's `(require (planet gh/aws))` will automatically
-install them as dependenies.
+* My `sha` library. Install: `raco pkg install
+  sha`. [Source](https://github.com/greghendershott/sha) or
 
 Unit tests
 ==========
@@ -77,3 +63,7 @@ want to run them:
   * You can run tests for all files using `raco test -x ./`.  (The `-x` flag is
     important to avoid evaluating rkt files that have no `test` module
     whatsoever.)
+
+* Be aware that the tests are extensive and will do significant data
+  transfer with Amazon AWS. Although this shouldn't cost a _lot_ of
+  money, it will take some time for them to complete.
