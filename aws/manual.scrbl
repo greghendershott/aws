@@ -702,8 +702,8 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
 @subsection{S3 examples}
 
 @codeblock0{
-(require (planet gh/aws/keys)
-         (planet gh/aws/s3))
+(require aws/keys
+         aws/s3)
 
 (define (member? x xs)
   (not (not (member x xs))))
@@ -1032,8 +1032,8 @@ In the examples below, the reason for using @racket[sleep] is that SDB has an
 the values we set are available to get.
 
 @codeblock0{
-(require (planet gh/aws/keys)
-         (planet gh/aws/sdb))
+(require aws/keys
+         aws/sdb)
 
 (ensure-have-keys)
 
@@ -2063,10 +2063,10 @@ This example can be found in @tt{examples/backup.rkt}.
 
 ;; Use Glacier for archival backups, and SDB to store the metadata.
 
-(require (planet gh/aws/sdb)
-         (planet gh/aws/sns)
-         (planet gh/aws/glacier)
-         (planet gh/http/request))      ;just for seconds->gmt-8601-string
+(require aws/sdb
+         aws/sns
+         aws/glacier
+         http/request)      ;just for seconds->gmt-8601-string
 
 (define path->archive-domain "examplesBackupPathToArchive")
 (define archive->meta-domain "examplesBackupArchiveToMeta")

@@ -684,8 +684,8 @@ Abort the multipart upload specified by the `upload-id` returned from
 ## 5.5. S3 examples
 
 ```racket
-(require (planet gh/aws/keys)                                       
-         (planet gh/aws/s3))                                        
+(require aws/keys                                                   
+         aws/s3)                                                    
                                                                     
 (define (member? x xs)                                              
   (not (not (member x xs))))                                        
@@ -1007,8 +1007,8 @@ In the examples below, the reason for using `sleep` is that SDB has an
 before the values we set are available to get.
 
 ```racket
-(require (planet gh/aws/keys)                                        
-         (planet gh/aws/sdb))                                        
+(require aws/keys                                                    
+         aws/sdb)                                                    
                                                                      
 (ensure-have-keys)                                                   
                                                                      
@@ -2149,10 +2149,10 @@ This example can be found in `examples/backup.rkt`.
                                                                                 
 ;; Use Glacier for archival backups, and SDB to store the metadata.             
                                                                                 
-(require (planet gh/aws/sdb)                                                    
-         (planet gh/aws/sns)                                                    
-         (planet gh/aws/glacier)                                                
-         (planet gh/http/request))      ;just for seconds->gmt-8601-string      
+(require aws/sdb                                                                
+         aws/sns                                                                
+         aws/glacier                                                            
+         http/request)      ;just for seconds->gmt-8601-string                  
                                                                                 
 (define path->archive-domain "examplesBackupPathToArchive")                     
 (define archive->meta-domain "examplesBackupArchiveToMeta")                     

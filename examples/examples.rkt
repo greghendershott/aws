@@ -8,8 +8,8 @@
 
 #|
 
-(require (planet gh/aws/keys)
-         (planet gh/aws/s3))
+(require aws/keys
+         aws/s3)
 
 (define (member? x xs)
   (not (not (member x xs))))
@@ -69,8 +69,8 @@
 
 #|
 
-(require (planet gh/aws/keys)
-         (planet gh/aws/sdb))
+(require aws/keys
+         aws/sdb)
 
 (define test-domain "TestDomain")
 
