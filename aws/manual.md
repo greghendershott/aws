@@ -220,7 +220,7 @@ Example:
 
 ```racket
 > (bucket&path->uri "bucket" "path/to/file") 
-"http://bucket.s3.amazonaws.com/path/to/file"
+"http://s3.amazonaws.com/bucket/path/to/file"
 ```
 
 ```racket
@@ -237,7 +237,7 @@ Example:
 > (bucket+path->bucket&path&uri "bucket/path/to/file")
 "bucket"                                              
 "path/to/file"                                        
-"http://bucket.s3.amazonaws.com/path/to/file"         
+"http://s3.amazonaws.com/bucket/path/to/file"         
 ```
 
 ```racket

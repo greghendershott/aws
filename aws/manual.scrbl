@@ -224,7 +224,7 @@ to make the URI for the resource.
 Example:
 @racketblock[
 > (bucket&path->uri "bucket" "path/to/file")
-"http://bucket.s3.amazonaws.com/path/to/file"
+"http://s3.amazonaws.com/bucket/path/to/file"
 ]
 
 }
@@ -241,7 +241,7 @@ Example:
 > (bucket+path->bucket&path&uri "bucket/path/to/file")
 "bucket"
 "path/to/file"
-"http://bucket.s3.amazonaws.com/path/to/file"
+"http://s3.amazonaws.com/bucket/path/to/file"
 ]
 
 }
