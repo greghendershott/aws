@@ -15,6 +15,8 @@
           (for-label "dynamo.rkt")
           (for-label "util.rkt"))
 
+@title{Amazon Web Services}
+
 @; ----------------------------------------------------------------------------
 @section{Introduction}
 
@@ -83,7 +85,7 @@ prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
 @; ----------------------------------------------------------------------------
 @section{AWS Keys}
 
-@defmodule[keys]
+@defmodule[aws/keys]
 
 @defparam[public-key key string?]{
 
@@ -125,7 +127,7 @@ Most of the functions do not return a failure value. Instead they raise
 @racket[exn:fail:aws], which you need to ``catch'' using
 @racket[with-handlers].
 
-@defmodule[exn]
+@defmodule[aws/exn]
 
 @defstruct[exn:fail:aws (
 [http-code exact-positive-integer?]
@@ -174,7 +176,7 @@ closed!
 @; ----------------------------------------------------------------------------
 @section{S3 (Storage)}
 
-@defmodule[s3]
+@defmodule[aws/s3]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html"
 "S3"] provides a fairly simple and REST-ful interface. Uploading an object to
@@ -757,7 +759,7 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
 @; ----------------------------------------------------------------------------
 @section{SDB (Database)}
 
-@defmodule[sdb]
+@defmodule[aws/sdb]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html"
 "SimpleDB"] is a ``schema-less'' database. You should review the SDB docs to
@@ -1108,7 +1110,7 @@ the values we set are available to get.
 @; ----------------------------------------------------------------------------
 @section{SES (Email)}
 
-@defmodule[ses]
+@defmodule[aws/ses]
 
 Please refer to the
 @hyperlink["http://docs.amazonwebservices.com/ses/latest/DeveloperGuide/Welcome.html"
@@ -1231,7 +1233,7 @@ be able to support them by setting the @tt{Action} parameter.}
 @; ----------------------------------------------------------------------------
 @section{SNS (Notifications)}
 
-@defmodule[sns]
+@defmodule[aws/sns]
 
 
 @hyperlink["http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480"
@@ -1329,7 +1331,7 @@ then @racket[message] must be valid JSON or SNS will return an error.
 @; ----------------------------------------------------------------------------
 @section{SQS (Queues)}
 
-@defmodule[sqs]
+@defmodule[aws/sqs]
 
 @hyperlink["http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html" "SQS"] provides distributed queues.
 
@@ -1406,7 +1408,7 @@ Change the visibility time of a message already in a queue. }
 @; ----------------------------------------------------------------------------
 @section{Route 53 (DNS)}
 
-@defmodule[r53]
+@defmodule[aws/r53]
 
 @hyperlink["http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html" "Route 53"] provides DNS.
 
@@ -1510,7 +1512,7 @@ Example:
 @; ----------------------------------------------------------------------------
 @section{Dynamo DB}
 
-@defmodule[dynamo]
+@defmodule[aws/dynamo]
 
 @hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "Dynamo"] is Amazon's newer "NoSQL" service.
 
@@ -1625,7 +1627,7 @@ documentation for these similarly-named functions.
 @; ----------------------------------------------------------------------------
 @section{CloudWatch (Monitoring)}
 
-@defmodule[cw]
+@defmodule[aws/cw]
 
 Among the Amazon Web Services, the
 @hyperlink["http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html"
@@ -1871,7 +1873,7 @@ Return the history for alarms meeting the criteria.
 @; ----------------------------------------------------------------------------
 @section{Glacier (Archives)}
 
-@defmodule[glacier]
+@defmodule[aws/glacier]
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html"
 "Glacier"] provides storage for archiving. You can store objects less
@@ -2134,7 +2136,7 @@ This example can be found in @tt{examples/backup.rkt}.
 @section{Utilities}
 
 
-@defmodule[util]
+@defmodule[aws/util]
 
 Although the following are mainly for internal use, they're @racket[provide]d
 in case you find them helpful.

@@ -2,10 +2,10 @@
 
 ;; Use Glacier for archival backups, and SDB to store the metadata.
 
-(require (planet gh/aws/sdb)
-         (planet gh/aws/sns)
-         (planet gh/aws/glacier)
-         (planet gh/http/request))      ;just for seconds->gmt-8601-string
+(require aws/sdb
+         aws/sns
+         aws/glacier
+         http/request)      ;just for seconds->gmt-8601-string
 
 (define path->archive-domain "examplesBackupPathToArchive")
 (define archive->meta-domain "examplesBackupArchiveToMeta")
