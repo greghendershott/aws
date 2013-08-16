@@ -1,3 +1,5 @@
+Amazon Web Services
+
 # 1. Introduction
 
 This libary provides support for many of the [Amazon Web
@@ -64,7 +66,7 @@ prefix, so that `create-topic` is renamed to `sns-create-topic`:
 # 3. AWS Keys
 
 ```racket
- (require keys)
+ (require aws/keys)
 ```
 
 ```racket
@@ -112,7 +114,7 @@ Most of the functions do not return a failure value. Instead they raise
 `exn:fail:aws`, which you need to “catch” using `with-handlers`.
 
 ```racket
- (require exn)
+ (require aws/exn)
 ```
 
 ```racket
@@ -161,7 +163,7 @@ custodian—or whatever) to make sure the port is closed!
 # 5. S3 (Storage)
 
 ```racket
- (require s3)
+ (require aws/s3)
 ```
 
 [S3](http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html)
@@ -739,7 +741,7 @@ Abort the multipart upload specified by the `upload-id` returned from
 # 6. SDB (Database)
 
 ```racket
- (require sdb)
+ (require aws/sdb)
 ```
 
 [SimpleDB](http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html)
@@ -1083,7 +1085,7 @@ before the values we set are available to get.
 # 7. SES (Email)
 
 ```racket
- (require ses)
+ (require aws/ses)
 ```
 
 Please refer to the [SES
@@ -1218,7 +1220,7 @@ you may be able to support them by setting the `Action` parameter.
 # 8. SNS (Notifications)
 
 ```racket
- (require sns)
+ (require aws/sns)
 ```
 
 [SNS](http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480)
@@ -1326,7 +1328,7 @@ Publish a notification message to a topic. If `#:json?` is `#t` then
 # 9. SQS (Queues)
 
 ```racket
- (require sqs)
+ (require aws/sqs)
 ```
 
 [SQS](http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html)
@@ -1441,7 +1443,7 @@ Change the visibility time of a message already in a queue.
 # 10. Route 53 (DNS)
 
 ```racket
- (require r53)
+ (require aws/r53)
 ```
 
 [Route
@@ -1552,7 +1554,7 @@ request")
 # 11. Dynamo DB
 
 ```racket
- (require dynamo)
+ (require aws/dynamo)
 ```
 
 [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html)
@@ -1671,7 +1673,7 @@ similarly-named functions.
 # 12. CloudWatch (Monitoring)
 
 ```racket
- (require cw)
+ (require aws/cw)
 ```
 
 Among the Amazon Web Services, the
@@ -1951,7 +1953,7 @@ Return the history for alarms meeting the criteria.
 # 13. Glacier (Archives)
 
 ```racket
- (require glacier)
+ (require aws/glacier)
 ```
 
 [Glacier](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html)
@@ -2218,7 +2220,7 @@ This example can be found in `examples/backup.rkt`.
 # 14. Utilities
 
 ```racket
- (require util)
+ (require aws/util)
 ```
 
 Although the following are mainly for internal use, they’re `provide`d
