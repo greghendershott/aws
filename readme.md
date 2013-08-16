@@ -42,7 +42,7 @@ Requirements
   http`. [Source](https://github.com/greghendershott/http).
 
 * My `sha` library. Install: `raco pkg install
-  sha`. [Source](https://github.com/greghendershott/sha) or
+  sha`. [Source](https://github.com/greghendershott/sha)
 
 Unit tests
 ==========
