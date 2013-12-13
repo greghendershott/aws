@@ -368,11 +368,11 @@ Make a `PUT` request to set the
 of the object  `bucket+path` to `acl`.
 
 ```racket
-(get  bucket+path                                        
-      reader                                             
-     [heads                                              
-      range-begin                                        
-      range-end]) -> any/c                               
+(get/proc  bucket+path                                   
+           reader                                        
+          [heads                                         
+           range-begin                                   
+           range-end]) -> any/c                          
   bucket+path : string?                                  
   reader : (input-port? string? -> any/c)                
   heads : dict? = '()                                    
@@ -380,9 +380,9 @@ of the object  `bucket+path` to `acl`.
   range-end : (or/c #f exact-nonnegative-integer?) = #f  
 ```
 
-> Although you may use `get` directly, it is also a building block for
-> other procedures that you may find more convenient, such as `get/bytes`
-> and `get/file`.
+> Although you may use `get/proc` directly, it is also a building block
+> for other procedures that you may find more convenient, such as
+> `get/bytes` and `get/file`.
 
 Make a `GET` request for `bucket+path` (which is the form
 `"bucket/path/to/resource"`).
@@ -391,7 +391,7 @@ The `reader` procedure is called with an `input-port?` and a `string?`
 respresenting the response headers. The `reader` should read the
 response entity from the port, being careful to read the exact number of
 bytes as specified in the response header’s `Content-Length` field. The
-return value of `reader` is the return value of `get`.
+return value of `reader` is the return value of `get/proc`.
 
 You may pass request headers in the optional `heads` argument.
 
@@ -428,7 +428,7 @@ _in_clusive, so your `range-end` argument is decremented to make the
 value for the header.)
 
 The response entity is held in memory; if it is very large and you want
-to "stream" it instead, consider using `get`.
+to "stream" it instead, consider using `get/proc`.
 
 ```racket
 (get/file  bucket+path                                                            
@@ -483,9 +483,9 @@ the port. The amount written should be exactly the same as
 header. You must also supply `mime-type` (for example `"text/plain"`)
 which is used to create a `Content-Type` request header.
 
-The `reader` procedure is the same as for `get`. The response entity for
-a `PUT` request usually isn’t interesting, but you should read it
-anyway.
+The `reader` procedure is the same as for `get/proc`. The response
+entity for a `PUT` request usually isn’t interesting, but you should
+read it anyway.
 
 Note: If you want a `Content-MD5` request header, you must calculate and
 supply it yourself in `heads`. Supplying this allows S3 to verify the

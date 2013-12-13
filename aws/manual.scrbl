@@ -391,7 +391,7 @@ Make a @tt{PUT} request to set the
 }
 
 
-@defproc[(get
+@defproc[(get/proc
 [bucket+path string?]
 [reader (input-port? string? -> any/c)]
 [heads dict? '()]
@@ -399,8 +399,8 @@ Make a @tt{PUT} request to set the
 [range-end (or/c #f exact-nonnegative-integer?) #f]
 ) any/c]{
 
-@margin-note{Although you may use @racket[get] directly, it is also a building
-block for other procedures that you may find more convenient, such as
+@margin-note{Although you may use @racket[get/proc] directly, it is also a
+building block for other procedures that you may find more convenient, such as
 @racket[get/bytes] and @racket[get/file].}
 
 Make a @tt{GET} request for @racket[bucket+path] (which is the form
@@ -410,7 +410,7 @@ The @racket[reader] procedure is called with an @racket[input-port?] and a
 @racket[string?] respresenting the response headers. The @racket[reader] should
 read the response entity from the port, being careful to read the exact number
 of bytes as specified in the response header's @tt{Content-Length} field. The
-return value of @racket[reader] is the return value of @racket[get].
+return value of @racket[reader] is the return value of @racket[get/proc].
 
 You may pass request headers in the optional @racket[heads] argument.
 
@@ -447,7 +447,7 @@ end as @italic{in}clusive, so your @racket[range-end] argument is decremented
 to make the value for the header.)
 
 The response entity is held in memory; if it is very large and you want to
-"stream" it instead, consider using @racket[get].
+"stream" it instead, consider using @racket[get/proc].
 
 }
 
@@ -500,7 +500,7 @@ header. You must also supply @racket[mime-type] (for example
 @racket["text/plain"]) which is used to create a @tt{Content-Type} request
 header.
 
-The @racket[reader] procedure is the same as for @racket[get]. The
+The @racket[reader] procedure is the same as for @racket[get/proc]. The
 response entity for a @tt{PUT} request usually isn't interesting, but you
 should read it anyway.
 
