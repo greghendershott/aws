@@ -13,11 +13,20 @@
          "pool.rkt"
          )
 
-(define s3-scheme (make-parameter "http"))
-(define s3-host (make-parameter "s3.amazonaws.com"))
-(provide s3-scheme s3-host)
+(provide (contract-out [s3-scheme parameter/c]
+                       [s3-host parameter/c]
+                       [s3-path-requests? parameter/c]))
 
-;; See http://docs.amazonwebservices.com/AmazonS3/latest/dev/BucketRestrictions.html?r=5071
+(define s3-scheme (make-parameter "http")) ;; (or/c "http" "https")
+
+;; This probably should have been named `s3-endpoint` instead.
+;; See "Endpoint" column in http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+(define s3-host (make-parameter "s3.amazonaws.com"))
+
+;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
+(define s3-path-requests? (make-parameter #f))
+
+;; See http://docs.amazonwebservices.com/AmazonS3/latest/dev/BucketRestrictions.html
 (define/contract/provide (valid-bucket-name? s [dns-compliant? #t])
   ((string?) (boolean?) . ->* . boolean?)
   (cond
@@ -53,7 +62,10 @@
 ;; capital letters.
 (define/contract/provide (bucket&path->uri b p)
   (string? string? . -> . string?)
-  (string-append (s3-scheme) "://" (s3-host) "/" b "/" p))
+  (cond [(s3-path-requests?)
+         (string-append (s3-scheme) "://" (s3-host) "/" b "/" p)]
+        [else
+         (string-append (s3-scheme) "://" b "." (s3-host) "/" p)]))
 
 (define/contract/provide (bucket+path->bucket&path b+p)
   (string? . -> . (values string? string?))
@@ -128,9 +140,19 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define/contract/provide (create-bucket b)
-  (string? . -> . string?)
-  (put/bytes (string-append b "/") #"" ""))
+;; `location` allows specifying a region. For the valid values, see the Region
+;; column of http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+;; Omitting this or supply #f means US Standard, "us-east-1".
+(define/contract/provide (create-bucket b [location #f])
+  ((string?) ((or/c #f string?)) . ->* . string?)
+  (define entity
+    (cond [location
+           (string->bytes/utf-8 (xexpr->string
+                                 `(CreateBucketConfiguration
+                                   ([xmlns "http://s3.amazonaws.com/doc/2006-03-01/"])
+                                   (LocationConstraint () ,location))))]
+          [else #""]))
+  (put/bytes (string-append b "/") entity ""))
 
 (define/contract/provide (delete-bucket b)
   (string? . -> . string?)
@@ -176,7 +198,8 @@
     (define qp (dict->form-urlencoded `((prefix ,p)
                                         (marker ,marker)
                                         (max-keys "1000"))))
-    (define uri (string-append (s3-scheme) "://" (s3-host) "/" b "/?" qp))
+    (define-values (_ __ uri)
+      (bucket+path->bucket&path&uri (string-append b "/?" qp)))
     (define h (make-date+authorization-headers
                (string-append b "/") "GET" '()))
     (define xpr (call/input-request "1.1" "GET" uri  h
@@ -608,10 +631,16 @@
 
   (test-case
    "bucket+path->bucket&path&uri"
-   (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
-   (check-equal? b "bucket")
-   (check-equal? p "path/name")
-   (check-equal? u "http://s3.amazonaws.com/bucket/path/name"))
+   (parameterize ([s3-path-requests? #t])
+     (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
+     (check-equal? b "bucket")
+     (check-equal? p "path/name")
+     (check-equal? u "http://s3.amazonaws.com/bucket/path/name"))
+   (parameterize ([s3-path-requests? #f])
+     (define-values (b p u) (bucket+path->bucket&path&uri "bucket/path/name"))
+     (check-equal? b "bucket")
+     (check-equal? p "path/name")
+     (check-equal? u "http://bucket.s3.amazonaws.com/path/name")))
 
   (test-case
    "canonical-amz-headers-string"
@@ -639,88 +668,117 @@
      (check-equal? (path->Content-Disposition "c:\\foo\\bar\\test.txt")
                    "attachment; filename=\"test.txt\"")))
 
-  (test-case
-   "put, get, head, ls"
-   (ensure-have-keys)
+  ;; ------------------------------------------------------------
+  (define/contract (test-bucket-ops [region #f])
+    (() ((or/c #f string?)) . ->* . any)
 
-   (define (member? x xs)
-     (not (not (member x xs))))
+    (printf "test-bucket-ops region = ~a\n" region)
 
-   (create-bucket (test/bucket))
-   (check-true (member? (test/bucket) (list-buckets)))
+    (define bucket (string-append (test/bucket) "-" (or region "us-standard")))
 
-   (define b+p (string-append (test/bucket) "/" (test/path)))
+    (ensure-have-keys)
 
-   ;; put/bytes
-   (define data #"Hello, world.")
-   (put/bytes b+p data default-mime-type)
-   (check-equal? (get/bytes b+p) data)
-   (check-equal? (get/bytes b+p '() 0 4)
-                 (subbytes data 0 4))
-   (check-equal? 200 (extract-http-code (head b+p)))
-   (check-true (xexpr? (get-acl b+p)))
+    (define (member? x xs)
+      (not (not (member x xs))))
 
-   ;; sign-uri
-   (check-equal?
-    (call/input-url (string->url
-                     (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
-                    get-pure-port
-                    (lambda (in)
-                      (port->bytes in)))
-    data)
+    (create-bucket bucket region)
+    (check-true (member? bucket (list-buckets)))
 
-   ;; ACL
-   (define acl (get-acl b+p))
-   (put-acl b+p acl)
-   (check-equal? (get-acl b+p) acl)
+    (define b+p (string-append bucket "/" (test/path)))
 
-   ;; Copy
-   (define b+p/copy (string-append b+p "-copy"))
-   (copy b+p b+p/copy)
-   (check-true (member? (string-append (test/path) "-copy")
-                        (ls b+p/copy)))
+    ;; put/bytes
+    (define data #"Hello, world.")
+    (put/bytes b+p data default-mime-type)
+    (check-equal? (get/bytes b+p) data)
+    (check-equal? (get/bytes b+p '() 0 4)
+                  (subbytes data 0 4))
+    (check-equal? 200 (extract-http-code (head b+p)))
+    (check-true (xexpr? (get-acl b+p)))
 
-   ;; Try put/get file, both simple and multipart
-   (define (put&get-file put-using p)
-     (define chksum (file->Content-MD5 p))
-     (put-using b+p p #:mime-type "text/plain")
-     (get/file b+p p #:exists 'replace)
-     (check-equal? (file->Content-MD5 p) chksum)
-     (check-equal? 200 (extract-http-code (head b+p)))
-     (check-true (member? (test/path) (ls b+p)))
-     (check-true (member? (test/path)
-                          (ls (string-append (test/bucket) "/"))))
-     (check-true (member? (test/path)
-                          (ls (string-append (test/bucket)
-                                             "/"
-                                             (substring (test/path) 0 3))))))
-   (define p (build-path (find-system-path 'temp-dir) "s3-test-file.txt"))
-   (with-output-to-file p
-     (lambda () (for ([i (in-range 10000)]) (displayln (random))))
-     #:exists 'replace #:mode 'text)
-   (put&get-file put/file p)
-   (put&get-file multipart-put/file p)
+    ;; sign-uri
+    (check-equal?
+     (call/input-url (string->url
+                      (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
+                     get-pure-port
+                     (lambda (in)
+                       (port->bytes in)))
+     data)
 
-   ;; ;; Multipart upload: Do with enough parts to exercise the worker
-   ;; ;; pool of 4 threads. How about 8 parts.
-   ;; (define part-size 5MB)              ;The minimum S3 will accept
-   ;; (define (get-part-bytes n) (make-bytes part-size n))
-   ;; (define num-parts 8)
-   ;; (multipart-put b+p num-parts get-part-bytes)
-   ;; (for ([i (in-range num-parts)])
-   ;;   ;; This is also an opportunity to test Range requests ability:
-   ;;   (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
-   ;;                 (get-part-bytes i)))
+    ;; ACL
+    (define acl (get-acl b+p))
+    (put-acl b+p acl)
+    (check-equal? (get-acl b+p) acl)
 
-   ;; Cleanup
-   (delete b+p/copy)
-   (delete b+p)
-   (delete-bucket (test/bucket))
-   (void))
+    ;; Copy
+    (define b+p/copy (string-append b+p "-copy"))
+    (copy b+p b+p/copy)
+    (check-true (member? (string-append (test/path) "-copy")
+                         (ls b+p/copy)))
+
+    ;; Try put/get file, both simple and multipart
+    (define (put&get-file put-using p)
+      (define chksum (file->Content-MD5 p))
+      (put-using b+p p #:mime-type "text/plain")
+      (get/file b+p p #:exists 'replace)
+      (check-equal? (file->Content-MD5 p) chksum)
+      (check-equal? 200 (extract-http-code (head b+p)))
+      (check-true (member? (test/path) (ls b+p)))
+      (check-true (member? (test/path)
+                           (ls (string-append bucket "/"))))
+      (check-true (member? (test/path)
+                           (ls (string-append bucket
+                                              "/"
+                                              (substring (test/path) 0 3))))))
+    (define p (build-path (find-system-path 'temp-dir) "s3-test-file.txt"))
+    (with-output-to-file p
+      (lambda () (for ([i (in-range 10000)]) (displayln (random))))
+      #:exists 'replace #:mode 'text)
+    (put&get-file put/file p)
+    (put&get-file multipart-put/file p)
+
+    ;; ;; Multipart upload: Do with enough parts to exercise the worker
+    ;; ;; pool of 4 threads. How about 8 parts.
+    ;; (define part-size 5MB)              ;The minimum S3 will accept
+    ;; (define (get-part-bytes n) (make-bytes part-size n))
+    ;; (define num-parts 8)
+    ;; (multipart-put b+p num-parts get-part-bytes)
+    ;; (for ([i (in-range num-parts)])
+    ;;   ;; This is also an opportunity to test Range requests ability:
+    ;;   (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+    ;;                 (get-part-bytes i)))
+
+    ;; Cleanup
+    (delete b+p/copy)
+    (delete b+p)
+    (delete-bucket bucket)
+    (void))
+
+  ;; Path style requests work only when the endpoint (what we call
+  ;; `s3-host`) matches the location of the bucket. However they
+  ;; permit less-restrictive names for US Standard buckets,
+  ;; e.g. capital letters.
+  ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
+  (parameterize ([s3-path-requests? #t])
+    (parameterize ([s3-host "s3.amazonaws.com"])
+      (test-bucket-ops))
+    (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+      (test-bucket-ops "eu-west-1")))
+  ;; Virtual host style requets work with the s3.amazonaws.com
+  ;; endpoint regardless of location. Only downside is that the bucket
+  ;; names are more restrictive -- see `valid-bucket-name?`.
+  ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
+  (parameterize ([s3-path-requests? #f])
+    (parameterize ([s3-host "s3.amazonaws.com"])
+      (test-bucket-ops)
+      (test-bucket-ops "eu-west-1"))
+    (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+      (test-bucket-ops "eu-west-1")))
+
+  ;; ------------------------------------------------------------
 
   (test-case
    "100-continue"
-   ;; Confirm that the gh/http collection's handling of 100-continue is
+   ;; Confirm that the http collection's handling of 100-continue is
    ;; working as expected with S3.
    ;;
    ;; Make a PUT request with a Content-Length vastly bigger than S3

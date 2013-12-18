@@ -187,7 +187,22 @@ have S3 ignore it and you have to transmit it all over again. Instead,
 you want to supply the request header `Expect: 100-continue`, which lets
 S3 respond _before_ you transmit the entity.
 
-## 5.1. Endpoint
+## 5.1. Request Method
+
+```racket
+(s3-path-requests?) -> boolean?
+(s3-path-requests? v) -> void? 
+  v : boolean?                 
+```
+
+The default value `#f` means "Virtual Hosted" style and `#t` means "Path
+Style" as described
+[here](http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html).
+"Virtual Hosted" is preferred. (Use "Path Style" only if you have a
+legacy US Standard bucket with a name that doesn’t meet the restrictions
+for DNS – for which `(valid-bucket-name? name #t)` returns `#f`.)
+
+## 5.2. Endpoint
 
 ```racket
 (s3-host) -> string?
@@ -196,6 +211,8 @@ S3 respond _before_ you transmit the entity.
 ```
 
 The hostname used for the S3 REST API. Defaults to `"s3.amazonaws.com"`.
+May be any value from [the Endpoint
+column](http://docs.aws.amazon.com/general/latest/gr/rande.html\#s3\_region).
 
 ```racket
 (s3-scheme) -> (or/c "http" "https")
@@ -206,7 +223,7 @@ The hostname used for the S3 REST API. Defaults to `"s3.amazonaws.com"`.
 The scheme used for the S3 REST API. Defaults to `"http"`. Set to
 `"https"` to connect using SSL.
 
-## 5.2. Authentication signatures
+## 5.3. Authentication signatures
 
 ```racket
 (bucket&path->uri bucket path-to-resource) -> string?
@@ -215,14 +232,14 @@ The scheme used for the S3 REST API. Defaults to `"http"`. Set to
 ```
 
 Given `bucket` and `path` (both of which should _not_ start with a
-leading `"/"`), use `s3-scheme` and `s3-host` to make the URI for the
-resource.
+leading `"/"`), use `s3-path-requests?`, `s3-scheme` and `s3-host` to
+make the URI for the resource.
 
 Example:
 
 ```racket
 > (bucket&path->uri "bucket" "path/to/file") 
-"http://s3.amazonaws.com/bucket/path/to/file"
+"http://bucket.s3.amazonaws.com/path/to/file"
 ```
 
 ```racket
@@ -239,7 +256,7 @@ Example:
 > (bucket+path->bucket&path&uri "bucket/path/to/file")
 "bucket"                                              
 "path/to/file"                                        
-"http://s3.amazonaws.com/bucket/path/to/file"         
+"http://bucket.s3.amazonaws.com/path/to/file"         
 ```
 
 ```racket
@@ -252,14 +269,18 @@ Example:
 Return the URI and headers for which to make an HTTP request to S3.
 Constructs an `Authorization` header based on the inputs.
 
-## 5.3. Conveniences
+## 5.4. Conveniences
 
 ```racket
-(create-bucket bucket-name) -> void?
-  bucket-name : string?             
+(create-bucket bucket-name [location]) -> void?
+  bucket-name : string?                        
+  location : (or/c #f string?) = #f            
 ```
 
-Create a bucket named `bucket-name`.
+Create a bucket named `bucket-name` in `location`. For valid values of
+`location` [see the Region
+column](http://docs.aws.amazon.com/general/latest/gr/rande.html\#s3\_region).
+Omitting or supplying `#f` for `location` means the US Standard region.
 
 Keep in mind that bucket names on S3 are global—shared among all users
 of S3. You may want to make your bucket names include a domain name that
@@ -270,6 +291,23 @@ _another_ AWS account, you will get a `409 Conflict` response.
 
 If you create a bucket that already exists under your _own_ account,
 this operation is idempotent (it’s not an error, it’s simply a no-op).
+
+Use `valid-bucket-name?` to check the validity of the `bucket-name` you
+want to use.
+
+```racket
+(valid-bucket-name?  bucket-name                 
+                    [dns-compliant?]) -> boolean?
+  bucket-name : string?                          
+  dns-compliant? : boolean? = #t                 
+```
+
+Checks whether a bucket name meets the criteria described
+[here](http://docs.amazonwebservices.com/AmazonS3/latest/dev/BucketRestrictions.html).
+The `dns-compliant?` argument corresponds to the more-restrictive rules
+required for non-US Standard buckets and required to use the so-called
+Virtual Host request method corresponding to the default value `#f` of
+the `s3-path-requests?` parameter.
 
 ```racket
 (delete-bucket bucket-name) -> void?
@@ -567,7 +605,7 @@ To use reduced redundancy storage, supply `(hash 'x-amz-storage-class
 A procedure which takes a `path-string?` and returns a `string?` with a
 MIME type.
 
-## 5.4. Multipart uploads
+## 5.5. Multipart uploads
 
 In addition to uploading an entire object in a single `PUT` request, S3
 lets you upload it in multiple 5 MB or larger chunks, using the
@@ -576,7 +614,7 @@ API](http://docs.amazonwebservices.com/AmazonS3/2006-03-01/dev/UsingRESTAPImpUpl
 Amazon recommends using this when the total data to upload is bigger
 than about 100 MB.
 
-### 5.4.1. Convenience
+### 5.5.1. Convenience
 
 ```racket
 (multipart-put  bucket+path                                 
@@ -617,7 +655,7 @@ Like `put/file` but uses multipart upload.
 The parts are uploaded using a small number of worker threads, to get
 some parallelism and probably better performance.
 
-### 5.4.2. Building blocks
+### 5.5.2. Building blocks
 
 Use these if the data you’re uploading is computed on the fly and you
 don’t know the total size in advance. Otherwise you may simply use
@@ -683,7 +721,7 @@ Returns S3’s XML response in the form of an `xexpr?`.
 Abort the multipart upload specified by the `upload-id` returned from
 `initiate-multipart-upload`.
 
-## 5.5. S3 examples
+## 5.6. S3 examples
 
 ```racket
 (require aws/keys                                                   

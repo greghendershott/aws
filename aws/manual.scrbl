@@ -199,11 +199,28 @@ again. Instead, you want to supply the request header @tt{Expect:
 100-continue}, which lets S3 respond @italic{before} you transmit the
 entity.
 
+@subsection{Request Method}
+
+@defparam[s3-path-requests? v boolean?]{
+
+The default value @racket[#f] means "Virtual Hosted" style and
+@racket[#t] means "Path Style" as described
+@hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html"
+"here"]. "Virtual Hosted" is preferred. (Use "Path Style" only if you
+have a legacy US Standard bucket with a name that doesn't meet the
+restrictions for DNS -- for which @racket[(valid-bucket-name? name
+#t)] returns @racket[#f].)
+
+}
+
 @subsection{Endpoint}
 
 @defparam[s3-host v string?]{
 
-The hostname used for the S3 REST API. Defaults to @tt{"s3.amazonaws.com"}.
+The hostname used for the S3 REST API. Defaults to
+@racket["s3.amazonaws.com"]. May be any value from
+@hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
+"the Endpoint column"].
 
 }
 
@@ -217,22 +234,26 @@ The scheme used for the S3 REST API. Defaults to @tt{"http"}. Set to
 
 @subsection{Authentication signatures}
 
-@defproc[(bucket&path->uri [bucket string?][path-to-resource string?]) string?]{
+@defproc[(bucket&path->uri
+[bucket string?]
+[path-to-resource string?]
+) string?]{
 
 Given @racket[bucket] and @racket[path] (both of which should @italic{not}
-start with a leading @racket["/"]), use @racket[s3-scheme] and @racket[s3-host]
-to make the URI for the resource.
+start with a leading @racket["/"]), use @racket[s3-path-requests?],
+@racket[s3-scheme] and @racket[s3-host] to make the URI for the resource.
 
 Example:
 @racketblock[
 > (bucket&path->uri "bucket" "path/to/file")
-"http://s3.amazonaws.com/bucket/path/to/file"
+"http://bucket.s3.amazonaws.com/path/to/file"
 ]
 
 }
 
 
-@defproc[(bucket+path->bucket&path&uri [b+p string?])
+@defproc[(bucket+path->bucket&path&uri
+[b+p string?])
 (values string? string? string?)]{
 
 Given a combined bucket+path string such as @racket["bucket/path/to/resource"],
@@ -243,14 +264,17 @@ Example:
 > (bucket+path->bucket&path&uri "bucket/path/to/file")
 "bucket"
 "path/to/file"
-"http://s3.amazonaws.com/bucket/path/to/file"
+"http://bucket.s3.amazonaws.com/path/to/file"
 ]
 
 }
 
 
-@defproc[(uri&headers [b+p string?][method string?][headers dict?])
-(values string? dict?)]{
+@defproc[(uri&headers
+[b+p string?]
+[method string?]
+[headers dict?]
+) (values string? dict?)]{
 
 Return the URI and headers for which to make an HTTP request to
 S3. Constructs an @tt{Authorization} header based on the inputs.
@@ -261,9 +285,14 @@ S3. Constructs an @tt{Authorization} header based on the inputs.
 
 @defproc[(create-bucket
 [bucket-name string?]
+[location (or/c #f string?) #f]
 ) void?]{
 
-Create a bucket named @racket[bucket-name].
+Create a bucket named @racket[bucket-name] in @racket[location]. For
+valid values of @racket[location]
+@hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
+"see the Region column"]. Omitting or supplying @racket[#f] for
+@racket[location] means the US Standard region.
 
 Keep in mind that bucket names on S3 are global---shared among all users of
 S3. You may want to make your bucket names include a domain name that you
@@ -275,8 +304,24 @@ If you try to create a bucket with a name that is already used by
 If you create a bucket that already exists under your @italic{own} account,
 this operation is idempotent (it's not an error, it's simply a no-op).
 
+Use @racket[valid-bucket-name?] to check the validity of the
+@racket[bucket-name] you want to use.
+
 }
 
+@defproc[(valid-bucket-name?
+[bucket-name string?]
+[dns-compliant? boolean? #t]
+) boolean?]{
+
+Checks whether a bucket name meets the criteria described
+@hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/BucketRestrictions.html"
+"here"]. The @racket[dns-compliant?] argument corresponds to the
+more-restrictive rules required for non-US Standard buckets and required to
+use the so-called Virtual Host request method corresponding to the default
+value @racket[#f] of the @racket[s3-path-requests?] parameter.
+
+}
 
 @defproc[(delete-bucket
 [bucket-name string?]
