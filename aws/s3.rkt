@@ -708,11 +708,10 @@
 
     ;; sign-uri
     (check-equal?
-     (call/input-url (string->url
-                      (sign-uri b+p "GET" (+ (current-seconds) 60) '()))
-                     get-pure-port
-                     (lambda (in)
-                       (port->bytes in)))
+     (call/input-request "1.1" "GET"
+                         (sign-uri b+p "GET" (+ (current-seconds) 60) '())
+                         '()
+                         read-entity/bytes)
      data)
 
     ;; ACL
