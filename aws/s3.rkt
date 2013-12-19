@@ -146,11 +146,11 @@
 (define/contract/provide (create-bucket b [location #f])
   ((string?) ((or/c #f string?)) . ->* . string?)
   (define entity
-    (cond [location
-           (string->bytes/utf-8 (xexpr->string
-                                 `(CreateBucketConfiguration
-                                   ([xmlns "http://s3.amazonaws.com/doc/2006-03-01/"])
-                                   (LocationConstraint () ,location))))]
+    (cond [location (string->bytes/utf-8
+                     (xexpr->string
+                      `(CreateBucketConfiguration
+                        ([xmlns "http://s3.amazonaws.com/doc/2006-03-01/"])
+                        (LocationConstraint () ,location))))]
           [else #""]))
   (put/bytes (string-append b "/") entity ""))
 
