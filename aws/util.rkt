@@ -86,8 +86,8 @@
   (do xpr #f))
 
 (define/provide (first-tag-value x t [def #f])
-  ;; Given a (listof xexpr?), return just the value of the first
-  ;; element with tag `t`.
+  ;; Given an xexpr?, return just the value of the first element with
+  ;; tag `t`.
   (match (tags x t)
     ['() def]
     [(list (list _ v) ...) (first v)]
