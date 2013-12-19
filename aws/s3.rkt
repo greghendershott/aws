@@ -681,7 +681,9 @@
   (define/contract (test-bucket-ops [region #f])
     (() ((or/c #f string?)) . ->* . any)
 
-    (printf "test-bucket-ops region = ~a\n" region)
+    (printf "test-bucket-ops ~a endpoint = ~a region = ~a\n"
+            (if (s3-path-requests?) "Path Style" "Virtual Hosted")
+            (s3-host) region)
 
     (define bucket (string-append (test/bucket) "-" (or region "us-standard")))
 
