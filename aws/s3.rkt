@@ -187,17 +187,20 @@
   (define data (string->bytes/utf-8 (xexpr->string acl)))
   (void (put/bytes b+p data "application/xml")))
 
-(define/contract/provide (ls b+p)
-  (string? . -> . (listof string?))
+(define/contract/provide (ls/proc b+p f init [max-each 1000])
+  ((string?
+    (any/c (listof xexpr?) . -> . any/c)
+    any/c)
+   ((and/c integer? (between/c 1 1000)))
+   . ->* . any/c)
   (define-values (b p u) (bucket+path->bucket&path&uri b+p))
-  ;; Will return only ~1000 keys at a time, so loop
   (let loop ([marker ""]
-             [xs '()])
+             [cum init])
     ;; Ignore the path in the URI. This is an operation on the bucket.
     ;; Instead use the path for the prefix query parameter.
     (define qp (dict->form-urlencoded `((prefix ,p)
                                         (marker ,marker)
-                                        (max-keys "1000"))))
+                                        (max-keys ,(~a max-each)))))
     (define-values (_ __ uri)
       (bucket+path->bucket&path&uri (string-append b "/?" qp)))
     (define h (make-date+authorization-headers
@@ -206,30 +209,36 @@
                                     (lambda (in h)
                                       (check-response in h)
                                       (read-entity/xexpr in h))))
-    (define keys (map third (tags xpr 'Key)))
-    (if (empty? keys)
-        xs
-        (loop (last keys)
-              (append xs keys)))))
+    (match (tags xpr 'Contents)
+      ['() cum]
+      [contents (loop (first-tag-value (last contents) 'Key)
+                      (f cum contents))])))
+
+(define/contract/provide (ls b+p)
+  (string? . -> . (listof string?))
+  (map (lambda (x) (first-tag-value x 'Key))
+       (ls/proc b+p append '())))
+
+;; TO-DO: Currently, for each object we make two HTTP requests and use
+;; a separate HTTP connection for each request. Instead, it might be
+;; nice to open just one connection, and make all the requests over
+;; it. Unfortunately I think it still must be two requests for each
+;; object, because a HEAD on the object will return different
+;; information such as Content-Length than the response headers for
+;; GET "?acl" request. But doing the requests over one persistent
+;; connection would at least eliminate the connection overhead.
+(define/contract/provide (ll* b+p)
+  (string? . -> . (listof (list/c xexpr? string? xexpr?)))
+  (define-values (b p) (bucket+path->bucket&path b+p))
+  (for/list ([x (in-list (ls/proc b+p append '()))])
+    (define path (string-append b "/" (first-tag-value x 'Key)))
+    (list x (head path) (get-acl path))))
 
 (define/contract/provide (ll b+p)
   (string? . -> . (listof (list/c string? string? xexpr?)))
-  (define xs (ls b+p))
-  (define-values (b p) (bucket+path->bucket&path b+p))
-  ;; TO-DO: Currently, for each object we make two HTTP requests and
-  ;; use a separate HTTP connection for each request. Instead, it
-  ;; might be nice to open just one connection, and make all the
-  ;; requests over it. Unfortunately I think it still must be two
-  ;; requests for each object, because a HEAD on the object will
-  ;; return different information such as Content-Length than the
-  ;; response headers for GET "?acl" request. But doing the requests
-  ;; over one persistent connection would at least eliminate the
-  ;; connection overhead.
-  (for/list ([x (in-list xs)])
-    (define p (string-append b "/" x))
-    (define heads (head p))
-    (define acl (get-acl p))
-    (list x heads acl)))
+  (for/list ([x (in-list (ll* b+p))])
+    (match-define (list contents heads acl) x)
+    (list (first-tag-value contents 'Key) heads acl)))
 
 (define/contract/provide (copy b+p/from b+p/to)
   (string? string? . -> . string?)

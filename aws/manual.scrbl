@@ -342,6 +342,40 @@ List all the buckets belonging to your AWS account.
 }
 
 
+@defproc[(ls/proc
+[bucket+path string?]
+[proc (any/c (listof xexpr?) . -> . any/c)]
+[init any/c]
+[max-each ((and/c integer? (between/c 1 1000))) 1000]
+) any/c]{
+
+List objects whose names start with the pathname @racket[bucket+path] (which
+is the form @racket["bucket/path/to/resource"]). S3 is queried to return
+results for at most @racket[max-each] objects at a time.
+
+For each such batch, @racket[proc] is called. The first time @racket[proc] is
+called, its first argument is the @racket[init] value; subsequent times it's
+given the previous value that it returned.
+
+The second argument to @racket[proc] is a @racket[(listof xexpr?)], where each
+@racket[xexpr?] respresents XML returned by S3 for each object. The XML is the
+@tt{Contents} portions of the
+@hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketGET.html"
+@tt{ListBucketResults}] XML response.
+
+The return value of @racket[ls/proc] is the final return value of
+@racket[proc].
+
+For example, @racket[ls] is implemented as simply:
+
+@racketblock[
+(map (lambda (x) (first-tag-value x 'Key))
+     (ls/proc b+p append '()))
+]
+
+}
+
+
 @defproc[(ls
 [bucket+path string?]
 ) (listof string?)]{
@@ -351,12 +385,31 @@ List the names of objects whose names start with the pathname
 }
 
 
+@defproc[(ll*
+[bucket+path string?]
+) (listof (list/c xexpr? string? xexpr?))]{
+
+List objects whose names start with the path in @racket[bucket+path] (which is
+the form @racket["bucket/path/to/resource"]). Return a list, each item of
+which is a list consisting of:
+
+@itemize[
+@item{ an @racket[xexpr] (as with @racket[ls/proc]) }
+@item{ response headers from a @tt{HEAD} request (as with @racket[head]) }
+@item{ an @racket[xexpr] representing the ACL (as with @racket[get-acl]) }
+]
+
+}
+
+
 @defproc[(ll
 [bucket+path string?]
 ) (listof (list/c string? string? xexpr?))]{
 
 List objects whose names start with the path in @racket[bucket+path] (which is
-the form @racket["bucket/path/to/resource"]):
+the form @racket["bucket/path/to/resource"]). Return a list, each item of
+which is a list consisting of:
+
 
 @itemize[
 @item{ name (as with @racket[ls]) }

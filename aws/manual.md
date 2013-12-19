@@ -326,6 +326,35 @@ already been deleted).
 List all the buckets belonging to your AWS account.
 
 ```racket
+(ls/proc bucket+path proc init [max-each]) -> any/c      
+  bucket+path : string?                                  
+  proc : (any/c (listof xexpr?) . -> . any/c)            
+  init : any/c                                           
+  max-each : ((and/c integer? (between/c 1 1000))) = 1000
+```
+
+List objects whose names start with the pathname `bucket+path` (which is
+the form `"bucket/path/to/resource"`). S3 is queried to return results
+for at most `max-each` objects at a time.
+
+For each such batch, `proc` is called. The first time `proc` is called,
+its first argument is the `init` value; subsequent times it’s given the
+previous value that it returned.
+
+The second argument to `proc` is a `(listof xexpr?)`, where each
+`xexpr?` respresents XML returned by S3 for each object. The XML is the
+`Contents` portions of the `ListBucketResults` XML response.
+
+The return value of `ls/proc` is the final return value of `proc`.
+
+For example, `ls` is implemented as simply:
+
+```racket
+(map (lambda (x) (first-tag-value x 'Key))
+     (ls/proc b+p append '()))            
+```
+
+```racket
 (ls bucket+path) -> (listof string?)
   bucket+path : string?             
 ```
@@ -334,12 +363,28 @@ List the names of objects whose names start with the pathname
 `bucket+path` (which is the form `"bucket/path/to/resource"`).
 
 ```racket
+(ll* bucket+path) -> (listof (list/c xexpr? string? xexpr?))
+  bucket+path : string?                                     
+```
+
+List objects whose names start with the path in `bucket+path` (which is
+the form `"bucket/path/to/resource"`). Return a list, each item of which
+is a list consisting of:
+
+* an `xexpr` (as with `ls/proc`)
+
+* response headers from a `HEAD` request (as with `head`)
+
+* an `xexpr` representing the ACL (as with `get-acl`)
+
+```racket
 (ll bucket+path) -> (listof (list/c string? string? xexpr?))
   bucket+path : string?                                     
 ```
 
 List objects whose names start with the path in `bucket+path` (which is
-the form `"bucket/path/to/resource"`):
+the form `"bucket/path/to/resource"`). Return a list, each item of which
+is a list consisting of:
 
 * name (as with `ls`)
 
