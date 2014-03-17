@@ -435,10 +435,22 @@ in @racket[net/head] format.
 
 @defproc[(delete
 [bucket+path string?]
-) void?]{
+) string?]{
 
 Make a @tt{DELETE} request to delete @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"])
+
+}
+
+
+@defproc[(delete-multiple
+[bucket string?]
+[paths (listof string?)]
+) string?]{
+
+Make a request to delete all @racket[paths] (each which is the form
+@racket["path/to/resource"]) in @racket[bucket]. The @racket[paths]
+list must have no more than 1000 elements.
 
 }
 
