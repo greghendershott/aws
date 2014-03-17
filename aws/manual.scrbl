@@ -347,6 +347,7 @@ List all the buckets belonging to your AWS account.
 [proc (any/c (listof xexpr?) . -> . any/c)]
 [init any/c]
 [max-each ((and/c integer? (between/c 1 1000))) 1000]
+[#:delimiter delimiter (or/c #f string?) #f]
 ) any/c]{
 
 List objects whose names start with the pathname @racket[bucket+path] (which
@@ -359,9 +360,10 @@ given the previous value that it returned.
 
 The second argument to @racket[proc] is a @racket[(listof xexpr?)], where each
 @racket[xexpr?] respresents XML returned by S3 for each object. The XML is the
-@tt{Contents} portions of the
+@tt{Contents} or @tt{CommonPrefixes} portions of the
 @hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketGET.html"
-@tt{ListBucketResults}] XML response.
+@tt{ListBucketResults}] XML response, where @tt{CommonPrefixes} are produced
+only for a non-@racket[#f] @racket[delimiter].
 
 The return value of @racket[ls/proc] is the final return value of
 @racket[proc].
