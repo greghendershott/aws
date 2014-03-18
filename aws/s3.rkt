@@ -171,6 +171,21 @@
   (define-values (u h) (uri&headers bucket+path "DELETE" '()))
   (call/input-request "1.1" "DELETE" u h (lambda (in h) h)))
 
+(define/contract/provide (delete-multiple bucket paths)
+  (string? (listof string?) . -> . string?)
+  (when ((length paths) . > . 1000)
+    (error 'delete-multiple "cannot delete more than 1000 items at a time"))
+  (define data
+    (string->bytes/utf-8 (xexpr->string
+                          `(Delete
+                            ,@(for/list ([p (in-list paths)])
+                                `(Object () (Key () ,p)))))))
+  (define-values (u h) (uri&headers (string-append bucket "/?delete") "POST"
+                                    (dict-set* '()
+                                               'Content-MD5 (bytes->Content-MD5 data))))
+  (call/output-request "1.1" "POST" u data (bytes-length data)
+                       h (lambda (in h) h)))
+
 (define/contract/provide (head bucket+path)
   (string? . -> . string?)
   (define-values (u h) (uri&headers bucket+path "HEAD" '()))
@@ -746,6 +761,19 @@
       (when more?
         (loop (cdr p)
               (string-append prefix (car p) "/"))))
+
+    ;; delete and delete-multiple
+    (define more-files (for/list ([i (in-range 1 4)])
+                         (define fn (string-append (test/path) "-" (number->string i)))
+                         (put/bytes (string-append bucket "/" fn)
+                                    (make-bytes i (char->integer #\x))
+                                    default-mime-type)
+                         fn))
+    (check-equal? (ls (string-append bucket "/")) (cons (test/path) more-files))
+    (delete (string-append bucket "/" (car more-files)))
+    (check-equal? (ls (string-append bucket "/")) (cons (test/path) (cdr more-files)))
+    (delete-multiple bucket (cdr more-files))
+    (check-equal? (ls (string-append bucket "/")) (list (test/path)))
 
     ;; sign-uri
     (check-equal?
