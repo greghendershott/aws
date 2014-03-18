@@ -66,7 +66,7 @@ prefix, so that `create-topic` is renamed to `sns-create-topic`:
 # 3. AWS Keys
 
 ```racket
- (require aws/keys)
+ (require aws/keys) package: aws
 ```
 
 ```racket
@@ -114,7 +114,7 @@ Most of the functions do not return a failure value. Instead they raise
 `exn:fail:aws`, which you need to “catch” using `with-handlers`.
 
 ```racket
- (require aws/exn)
+ (require aws/exn) package: aws
 ```
 
 ```racket
@@ -163,7 +163,7 @@ custodian—or whatever) to make sure the port is closed!
 # 5. S3 (Storage)
 
 ```racket
- (require aws/s3)
+ (require aws/s3) package: aws
 ```
 
 [S3](http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html)
@@ -326,11 +326,16 @@ already been deleted).
 List all the buckets belonging to your AWS account.
 
 ```racket
-(ls/proc bucket+path proc init [max-each]) -> any/c      
+(ls/proc  bucket+path                                    
+          proc                                           
+          init                                           
+         [max-each                                       
+          #:delimiter delimiter]) -> any/c               
   bucket+path : string?                                  
   proc : (any/c (listof xexpr?) . -> . any/c)            
   init : any/c                                           
   max-each : ((and/c integer? (between/c 1 1000))) = 1000
+  delimiter : (or/c #f string?) = #f                     
 ```
 
 List objects whose names start with the pathname `bucket+path` (which is
@@ -343,7 +348,9 @@ previous value that it returned.
 
 The second argument to `proc` is a `(listof xexpr?)`, where each
 `xexpr?` respresents XML returned by S3 for each object. The XML is the
-`Contents` portions of the `ListBucketResults` XML response.
+`Contents` or `CommonPrefixes` portions of the `ListBucketResults` XML
+response, where `CommonPrefixes` are produced only for a non-`#f`
+`delimiter`.
 
 The return value of `ls/proc` is the final return value of `proc`.
 
@@ -404,12 +411,22 @@ Make a `HEAD` request for `bucket+path` (which is the form
 `bucket+path` is the form `"bucket/path/to/resource"`.
 
 ```racket
-(delete bucket+path) -> void?
-  bucket+path : string?      
+(delete bucket+path) -> string?
+  bucket+path : string?        
 ```
 
 Make a `DELETE` request to delete `bucket+path` (which is the form
 `"bucket/path/to/resource"`)
+
+```racket
+(delete-multiple bucket paths) -> string?
+  bucket : string?                       
+  paths : (listof string?)               
+```
+
+Make a request to delete all `paths` (each which is the form
+`"path/to/resource"`) in `bucket`. The `paths` list must have no more
+than 1000 elements.
 
 ```racket
 (copy bucket+path/from bucket+path/to) -> string?
@@ -824,7 +841,7 @@ Abort the multipart upload specified by the `upload-id` returned from
 # 6. SDB (Database)
 
 ```racket
- (require aws/sdb)
+ (require aws/sdb) package: aws
 ```
 
 [SimpleDB](http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html)
@@ -1168,7 +1185,7 @@ before the values we set are available to get.
 # 7. SES (Email)
 
 ```racket
- (require aws/ses)
+ (require aws/ses) package: aws
 ```
 
 Please refer to the [SES
@@ -1303,7 +1320,7 @@ you may be able to support them by setting the `Action` parameter.
 # 8. SNS (Notifications)
 
 ```racket
- (require aws/sns)
+ (require aws/sns) package: aws
 ```
 
 [SNS](http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480)
@@ -1411,7 +1428,7 @@ Publish a notification message to a topic. If `#:json?` is `#t` then
 # 9. SQS (Queues)
 
 ```racket
- (require aws/sqs)
+ (require aws/sqs) package: aws
 ```
 
 [SQS](http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html)
@@ -1526,7 +1543,7 @@ Change the visibility time of a message already in a queue.
 # 10. Route 53 (DNS)
 
 ```racket
- (require aws/r53)
+ (require aws/r53) package: aws
 ```
 
 [Route
@@ -1637,7 +1654,7 @@ request")
 # 11. Dynamo DB
 
 ```racket
- (require aws/dynamo)
+ (require aws/dynamo) package: aws
 ```
 
 [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html)
@@ -1756,7 +1773,7 @@ similarly-named functions.
 # 12. CloudWatch (Monitoring)
 
 ```racket
- (require aws/cw)
+ (require aws/cw) package: aws
 ```
 
 Among the Amazon Web Services, the
@@ -2036,7 +2053,7 @@ Return the history for alarms meeting the criteria.
 # 13. Glacier (Archives)
 
 ```racket
- (require aws/glacier)
+ (require aws/glacier) package: aws
 ```
 
 [Glacier](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html)
@@ -2303,7 +2320,7 @@ This example can be found in `examples/backup.rkt`.
 # 14. Utilities
 
 ```racket
- (require aws/util)
+ (require aws/util) package: aws
 ```
 
 Although the following are mainly for internal use, they’re `provide`d
