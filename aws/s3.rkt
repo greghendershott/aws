@@ -72,7 +72,7 @@
   (match b+p
     [(regexp "^([^/]+?)/(.*?)$" (list _ b p)) (values b (or p ""))]
     [(regexp "^/") (error 'bucket+path->bucket&path "don't use leading /")]
-    [else (error 'bucket+path->bucket&path "invalid bucket+path")]))
+    [else (error 'bucket+path->bucket&path "invalid bucket+path: ~e" b+p)]))
 
 (define/contract/provide (bucket+path->bucket&path&uri b+p)
   (string? . -> . (values string? string? string?))
@@ -187,11 +187,13 @@
   (define data (string->bytes/utf-8 (xexpr->string acl)))
   (void (put/bytes b+p data "application/xml")))
 
-(define/contract/provide (ls/proc b+p f init [max-each 1000])
+(define/contract/provide (ls/proc b+p f init [max-each 1000]
+                                  #:delimiter [delimiter #f])
   ((string?
     (any/c (listof xexpr?) . -> . any/c)
     any/c)
-   ((and/c integer? (between/c 1 1000)))
+   ((and/c integer? (between/c 1 1000))
+    #:delimiter (or/c #f string?))
    . ->* . any/c)
   (define-values (b p u) (bucket+path->bucket&path&uri b+p))
   (let loop ([marker ""]
@@ -200,7 +202,10 @@
     ;; Instead use the path for the prefix query parameter.
     (define qp (dict->form-urlencoded `((prefix ,p)
                                         (marker ,marker)
-                                        (max-keys ,(~a max-each)))))
+                                        (max-keys ,(~a max-each))
+                                        ,@(if delimiter
+                                              `((delimiter ,delimiter))
+                                              '()))))
     (define-values (_ __ uri)
       (bucket+path->bucket&path&uri (string-append b "/?" qp)))
     (define h (make-date+authorization-headers
@@ -209,10 +214,24 @@
                                     (lambda (in h)
                                       (check-response in h)
                                       (read-entity/xexpr in h))))
-    (match (tags xpr 'Contents)
-      ['() cum]
-      [contents (loop (first-tag-value (last contents) 'Key)
-                      (f cum contents))])))
+    (define contents (tags xpr 'Contents))
+    (define prefixes (if delimiter
+                         (tags xpr 'CommonPrefixes)
+                         null))
+    (define truncated? (equal? "true" (first-tag-value xpr 'IsTruncated)))
+    (define next-marker (and truncated?
+                             (if delimiter
+                                 (first-tag-value xpr 'NextMarker)
+                                 (first-tag-value (last contents) 'Key))))
+    (let* ([cum (if (null? contents)
+                    cum
+                    (f cum contents))]
+           [cum (if (null? prefixes)
+                    cum
+                    (f cum prefixes))])
+      (if truncated?
+          (loop next-marker cum)
+          cum))))
 
 (define/contract/provide (ls b+p)
   (string? . -> . (listof string?))
@@ -695,6 +714,9 @@
     (create-bucket bucket region)
     (check-true (member? bucket (list-buckets)))
 
+    (check-equal? '() (ls (string-append bucket "/")))
+    (check-equal? #f (ls/proc (string-append bucket "/") (lambda (v x) #t) #f))
+
     (define b+p (string-append bucket "/" (test/path)))
 
     ;; put/bytes
@@ -705,6 +727,25 @@
                   (subbytes data 0 4))
     (check-equal? 200 (extract-http-code (head b+p)))
     (check-true (xexpr? (get-acl b+p)))
+    
+    ;; ls and ls/proc:
+    (check-equal? (list (test/path)) (ls (string-append bucket "/")))
+    (check-equal? 1 (ls/proc (string-append bucket "/") (lambda (v x) (add1 v)) 0))
+    (let loop ([p (string-split (test/path) "/")] [prefix ""])
+      (define more? (pair? (cdr p)))
+      (ls/proc (string-append bucket "/" prefix)
+               #:delimiter "/"
+               (lambda (v xs)
+                 (check-equal? 1 (length xs))
+                 (unless (null? xs)
+                   (define x (car xs))
+                   (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
+                   (check-equal? (first-tag-value x (if more? 'Prefix 'Key))
+                                 (string-append prefix (car p) (if more? "/" "")))))
+               (void))
+      (when more?
+        (loop (cdr p)
+              (string-append prefix (car p) "/"))))
 
     ;; sign-uri
     (check-equal?
