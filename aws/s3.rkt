@@ -169,7 +169,10 @@
 (define/contract/provide (delete bucket+path)
   (string? . -> . string?)
   (define-values (u h) (uri&headers bucket+path "DELETE" '()))
-  (call/input-request "1.1" "DELETE" u h (lambda (in h) h)))
+  (call/input-request "1.1" "DELETE" u h
+                      (lambda (in h)
+                        (check-response in h)
+                        h)))
 
 (define/contract/provide (delete-multiple bucket paths)
   (string? (listof string?) . -> . string?)
@@ -183,13 +186,19 @@
   (define-values (u h) (uri&headers (string-append bucket "/?delete") "POST"
                                     (dict-set* '()
                                                'Content-MD5 (bytes->Content-MD5 data))))
-  (call/output-request "1.1" "POST" u data (bytes-length data)
-                       h (lambda (in h) h)))
+  (call/output-request "1.1" "POST" u data (bytes-length data) h
+                       (lambda (in h)
+                         (check-response in h)
+                         (read-entity/bytes in h)
+                         h)))
 
 (define/contract/provide (head bucket+path)
   (string? . -> . string?)
   (define-values (u h) (uri&headers bucket+path "HEAD" '()))
-  (call/input-request "1.1" "HEAD" u h (lambda (in h) h)))
+  (call/input-request "1.1" "HEAD" u h
+                      (lambda (in h)
+                        (check-response in h)
+                        h)))
 
 (define/contract/provide (get-acl bucket+path [heads '()])
   ((string?) (dict?) . ->* . xexpr?)
@@ -441,7 +450,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define 5MB (* 5 1024 1024))
+(define 5MB (* 5 1024 1024)) ;multipart upload parts must be at least 5 MB
 (define part-number/c (and/c exact-integer? (between/c 1 10000)))
 
 (define/contract/provide (multipart-put b+p
@@ -469,14 +478,13 @@
   ;; upload must be at least 5 MB. So 4 workers is using 20 MB for
   ;; in-memory buffers. Easy, Trigger.
   (define parts
-    (with-worker-pool
-     (min 4 num-parts)
-     (lambda (pool)
-       (for/list ([n (in-range num-parts)])
-         (add-job pool
-                  (lambda ()
-                    (upload-part b+p upid (add1 n) (get-part n)))))
-       (get-results pool num-parts))))
+    (with-worker-pool (min 4 num-parts)
+      (lambda (pool)
+        (for/list ([n (in-range num-parts)])
+          (add-job pool
+                   (lambda ()
+                     (upload-part b+p upid (add1 n) (get-part n)))))
+        (get-results pool num-parts))))
   (complete-multipart-upload b+p upid parts)
   upid)
 
@@ -492,7 +500,6 @@
   (define (get-part part-num)
     ;; Each get-part does its own file open, so we're OK to
     ;; position/read the same file from multiple threads.
-    (log-aws-debug (tr "get-part" part-num part-size num-parts))
     (define (read-part in)
       (file-position in (* part-num part-size))
       (read-bytes part-size in))
@@ -510,25 +517,33 @@
                                     "POST"
                                     (dict-set* heads 'Content-Type mime-type)))
   (define x (call/input-request "1.1" "POST" u h read-entity/xexpr))
-  (first-tag-value x 'UploadId))
+  (define upid (first-tag-value x 'UploadId))
+  (log-aws-debug (tr "initiate-multipart-upload" upid))
+  upid)
 
 (define/contract/provide (upload-part bucket+path upid part bstr)
   (string? string? part-number/c bytes?
            . -> . (cons/c part-number/c string?))
+  (log-aws-debug (tr "upload-part start" upid part))
   (define b+p (string-append bucket+path
                              "?partNumber=" (number->string part)
                              "&uploadId=" upid))
   (define-values (u h)
-    (uri&headers b+p "PUT" (hash 'Expect "100-continue"
-                                 'Content-MD5 (bytes->Content-MD5 bstr))))
+    (uri&headers b+p
+                 "PUT"
+                 (hash 'Expect "100-continue"
+                       'Content-MD5 (bytes->Content-MD5 bstr))))
   (call/output-request "1.1" "PUT" u bstr (bytes-length bstr) h
                        (lambda (in h)
                          (check-response in h)
-                         (cons part
-                               (extract-field "ETag" h)))))
+                         (read-entity/bytes in h)
+                         (define part-id (extract-field "ETag" h))
+                         (log-aws-debug (tr "upload-part response" part-id))
+                         (cons part part-id))))
 
 (define/contract/provide (complete-multipart-upload bucket+path upid parts)
   (string? string? (listof (cons/c part-number/c string?)) . -> . xexpr?)
+  (log-aws-debug (tr "complete-multipart-upload" upid parts))
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "POST" '()))
@@ -564,11 +579,23 @@
                         (ETag () ,etag))))
              (sort parts < #:key car))))))
 
+(define/contract/provide (list-multipart-uploads bucket)
+  (string? . -> . xexpr?)
+  (define b+p (string-append bucket "/?uploads"))
+  (define-values (u h) (uri&headers b+p "GET" '()))
+  (call/input-request "1.1" "GET" u h
+                      (lambda (in h)
+                        (check-response in h)
+                        (read-entity/xexpr in h))))
+
 (define/contract/provide (abort-multipart-upload bucket+path upid)
   (string? string? . -> . void)
   (define b+p (string-append bucket+path"?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "DELETE" '()))
-  (call/input-request "1.1" "DELETE" u h (lambda (in h) (void))))
+  (call/input-request "1.1" "DELETE" u h
+                      (lambda (in h)
+                        (check-response in h)
+                        h)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -712,12 +739,13 @@
                    "attachment; filename=\"test.txt\"")))
 
   ;; ------------------------------------------------------------
-  (define/contract (test-bucket-ops [region #f])
-    (() ((or/c #f string?)) . ->* . any)
+  (define/contract (test-bucket-ops region)
+    ((or/c #f string?) . -> . any)
 
-    (printf "test-bucket-ops ~a endpoint = ~a region = ~a\n"
+    (printf "~a: Endpoint=~a Region=~a\n"
             (if (s3-path-requests?) "Path Style" "Virtual Hosted")
-            (s3-host) region)
+            (s3-host)
+            region)
 
     (define bucket (string-append (test/bucket) "-" (or region "us-standard")))
 
@@ -729,8 +757,8 @@
     (create-bucket bucket region)
     (check-true (member? bucket (list-buckets)))
 
-    (check-equal? '() (ls (string-append bucket "/")))
-    (check-equal? #f (ls/proc (string-append bucket "/") (lambda (v x) #t) #f))
+    (check-equal? (ls (string-append bucket "/")) '())
+    (check-equal? (ls/proc (string-append bucket "/") (lambda (v x) #t) #f) #f)
 
     (define b+p (string-append bucket "/" (test/path)))
 
@@ -740,18 +768,18 @@
     (check-equal? (get/bytes b+p) data)
     (check-equal? (get/bytes b+p '() 0 4)
                   (subbytes data 0 4))
-    (check-equal? 200 (extract-http-code (head b+p)))
+    (check-equal? (extract-http-code (head b+p)) 200)
     (check-true (xexpr? (get-acl b+p)))
     
     ;; ls and ls/proc:
     (check-equal? (list (test/path)) (ls (string-append bucket "/")))
-    (check-equal? 1 (ls/proc (string-append bucket "/") (lambda (v x) (add1 v)) 0))
+    (check-equal? (ls/proc (string-append bucket "/") (lambda (v x) (add1 v)) 0) 1)
     (let loop ([p (string-split (test/path) "/")] [prefix ""])
       (define more? (pair? (cdr p)))
       (ls/proc (string-append bucket "/" prefix)
                #:delimiter "/"
                (lambda (v xs)
-                 (check-equal? 1 (length xs))
+                 (check-equal? (length xs) 1)
                  (unless (null? xs)
                    (define x (car xs))
                    (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
@@ -800,7 +828,7 @@
       (put-using b+p p #:mime-type "text/plain")
       (get/file b+p p #:exists 'replace)
       (check-equal? (file->Content-MD5 p) chksum)
-      (check-equal? 200 (extract-http-code (head b+p)))
+      (check-equal? (extract-http-code (head b+p)) 200)
       (check-true (member? (test/path) (ls b+p)))
       (check-true (member? (test/path)
                            (ls (string-append bucket "/"))))
@@ -817,7 +845,7 @@
 
     ;; ;; Multipart upload: Do with enough parts to exercise the worker
     ;; ;; pool of 4 threads. How about 8 parts.
-    ;; (define part-size 5MB)              ;The minimum S3 will accept
+    ;; (define part-size 5MB) ;minimum S3 will accept for multipart parts
     ;; (define (get-part-bytes n) (make-bytes part-size n))
     ;; (define num-parts 8)
     ;; (multipart-put b+p num-parts get-part-bytes)
@@ -832,29 +860,48 @@
     (delete-bucket bucket)
     (void))
 
-  ;; Path style requests work only when the endpoint (what we call
-  ;; `s3-host`) matches the location of the bucket. However they
-  ;; permit less-restrictive names for US Standard buckets,
-  ;; e.g. capital letters.
-  ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
-  (parameterize ([s3-path-requests? #t])
-    (parameterize ([s3-host "s3.amazonaws.com"])
-      (test-bucket-ops))
-    (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-      (test-bucket-ops "eu-west-1")))
-  ;; Virtual host style requets work with the s3.amazonaws.com
-  ;; endpoint regardless of location. Only downside is that the bucket
-  ;; names are more restrictive -- see `valid-bucket-name?`.
-  ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
-  (parameterize ([s3-path-requests? #f])
-    (parameterize ([s3-host "s3.amazonaws.com"])
-      (test-bucket-ops)
-      (test-bucket-ops "eu-west-1"))
-    (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-      (test-bucket-ops "eu-west-1")))
+  (with-handlers ([exn:fail?
+                   (lambda (_)
+                     (displayln "cleaning up")
+                     (delete-multiple "greghendershott-test-bucket-eu-west-1/"
+                                      '("path/to/test.txt"
+                                        "path/to/test.txt-copy"))
+                     (delete-bucket "greghendershott-test-bucket-eu-west-1"))])
+    (for ([i 3])
+      (parameterize ([current-pool-timeout 0]
+                     [s3-path-requests? #f]
+                     ;;[s3-host "s3-eu-west-1.amazonaws.com"]
+                     [s3-host "s3.amazonaws.com"])
+        (test-bucket-ops #f #;"eu-west-1"))))
+
+  #;
+  (for ([pool '(0 10)])
+    (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
+    (parameterize ([current-pool-timeout pool])
+      ;; Path style requests work only when the endpoint (what we call
+      ;; `s3-host`) matches the location of the bucket. However they
+      ;; permit less-restrictive names for US Standard buckets,
+      ;; e.g. capital letters.
+      ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
+      (parameterize ([s3-path-requests? #t])
+        (parameterize ([s3-host "s3.amazonaws.com"])
+          (test-bucket-ops #f)) ;us-standard
+        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+          (test-bucket-ops "eu-west-1")))
+      ;; Virtual host style requets work with the s3.amazonaws.com
+      ;; endpoint regardless of location. Only downside is that the bucket
+      ;; names are more restrictive -- see `valid-bucket-name?`.
+      ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
+      (parameterize ([s3-path-requests? #f])
+        (parameterize ([s3-host "s3.amazonaws.com"])
+          (test-bucket-ops #f) ;us-standard
+          (test-bucket-ops "eu-west-1"))
+        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+          (test-bucket-ops "eu-west-1")))))
 
   ;; ------------------------------------------------------------
 
+  #;
   (test-case
    "100-continue"
    ;; Confirm that the http collection's handling of 100-continue is
@@ -882,3 +929,7 @@
    (check-false writer-called?)
    (delete-bucket (test/bucket))
    (void)))
+
+;; Some cleanup if test fails midway
+#|
+|#
