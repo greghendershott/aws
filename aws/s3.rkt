@@ -854,16 +854,16 @@
     (put&get-file put/file p)
     (put&get-file multipart-put/file p)
 
-    ;; ;; Multipart upload: Do with enough parts to exercise the worker
-    ;; ;; pool of 4 threads. How about 8 parts.
-    ;; (define part-size 5MB) ;minimum S3 will accept for multipart parts
-    ;; (define (get-part-bytes n) (make-bytes part-size n))
-    ;; (define num-parts 8)
-    ;; (multipart-put b+p num-parts get-part-bytes)
-    ;; (for ([i (in-range num-parts)])
-    ;;   ;; This is also an opportunity to test Range requests ability:
-    ;;   (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
-    ;;                 (get-part-bytes i)))
+    ;; Multipart upload: Do with enough parts to exercise the worker
+    ;; pool of 4 threads. How about 8 parts.
+    (define part-size 5MB) ;minimum S3 will accept for multipart parts
+    (define (get-part-bytes n) (make-bytes part-size n))
+    (define num-parts 8)
+    (multipart-put b+p num-parts get-part-bytes)
+    (for ([i (in-range num-parts)])
+      ;; This is also an opportunity to test Range requests ability:
+      (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+                    (get-part-bytes i)))
 
     ;; Cleanup
     (delete b+p/copy)
@@ -871,48 +871,23 @@
     (delete-bucket bucket)
     (void))
 
-  (with-handlers ([exn:fail?
-                   (lambda (_)
-                     (displayln "cleaning up")
-                     (delete-multiple "greghendershott-test-bucket-eu-west-1/"
-                                      '("path/to/test.txt"
-                                        "path/to/test.txt-copy"))
-                     (delete-bucket "greghendershott-test-bucket-eu-west-1"))])
-    (for ([i 3])
-      (parameterize ([current-pool-timeout 0]
-                     [s3-path-requests? #f]
-                     ;;[s3-host "s3-eu-west-1.amazonaws.com"]
-                     [s3-host "s3.amazonaws.com"])
-        (test-bucket-ops #f #;"eu-west-1"))))
-
-  #;
   (for ([pool '(0 10)])
     (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
     (parameterize ([current-pool-timeout pool])
-      ;; Path style requests work only when the endpoint (what we call
-      ;; `s3-host`) matches the location of the bucket. However they
-      ;; permit less-restrictive names for US Standard buckets,
-      ;; e.g. capital letters.
-      ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
-      (parameterize ([s3-path-requests? #t])
-        (parameterize ([s3-host "s3.amazonaws.com"])
-          (test-bucket-ops #f)) ;us-standard
-        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-          (test-bucket-ops "eu-west-1")))
-      ;; Virtual host style requets work with the s3.amazonaws.com
-      ;; endpoint regardless of location. Only downside is that the bucket
-      ;; names are more restrictive -- see `valid-bucket-name?`.
-      ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
       (parameterize ([s3-path-requests? #f])
         (parameterize ([s3-host "s3.amazonaws.com"])
           (test-bucket-ops #f) ;us-standard
           (test-bucket-ops "eu-west-1"))
         (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+          (test-bucket-ops "eu-west-1")))
+      (parameterize ([s3-path-requests? #t])
+        (parameterize ([s3-host "s3.amazonaws.com"])
+          (test-bucket-ops #f)) ;us-standard
+        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
           (test-bucket-ops "eu-west-1")))))
 
   ;; ------------------------------------------------------------
 
-  #;
   (test-case
    "100-continue"
    ;; Confirm that the http collection's handling of 100-continue is
