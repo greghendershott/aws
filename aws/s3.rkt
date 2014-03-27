@@ -189,7 +189,14 @@
   (call/output-request "1.1" "POST" u data (bytes-length data) h
                        (lambda (in h)
                          (check-response in h)
-                         (read-entity/bytes in h)
+                         ;; Just because 200 OK doesn't mean no error.
+                         ;; Check for <Error> in the response.
+                         (define e (read-entity/bytes in h))
+                         (match e
+                           [(regexp "<Error>.*?</Error>")
+                            (raise (header&response->exn:fail:aws
+                                    h e (current-continuation-marks)))]
+                           [_ (void)])
                          h)))
 
 (define/contract/provide (head bucket+path)
