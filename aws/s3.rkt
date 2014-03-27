@@ -419,11 +419,7 @@
                  (dict-set* heads
                             'Content-Type mime-type
                             'Expect "100-continue")))
-  (call/output-request "1.1" "PUT" u writer data-len h
-                       (lambda (in h)
-                         (check-response in h)
-                         (read-entity/bytes in h)
-                         h)))
+  (call/output-request "1.1" "PUT" u writer data-len h check-response))
 
 (define/contract/provide (put/bytes bucket+path
                                     data
