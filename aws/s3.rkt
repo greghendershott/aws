@@ -915,7 +915,3 @@
    (check-false writer-called?)
    (delete-bucket (test/bucket))
    (void)))
-
-;; Some cleanup if test fails midway
-#|
-|#
