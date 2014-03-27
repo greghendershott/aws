@@ -523,9 +523,12 @@
   (define-values (u h) (uri&headers b+p
                                     "POST"
                                     (dict-set* heads 'Content-Type mime-type)))
-  (define x (call/input-request "1.1" "POST" u h read-entity/xexpr))
+  (define x (call/input-request "1.1" "POST" u h
+                                (lambda (in h)
+                                  (check-response in h)
+                                  (read-entity/xexpr in h))))
   (define upid (first-tag-value x 'UploadId))
-  (log-aws-debug (tr "initiate-multipart-upload" upid))
+  (log-aws-debug (tr "initiate-multipart-upload returned" upid))
   upid)
 
 (define/contract/provide (upload-part bucket+path upid part bstr)
