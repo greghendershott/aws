@@ -23,6 +23,15 @@
 ;; See "Endpoint" column in http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 (define s3-host (make-parameter "s3.amazonaws.com"))
 
+;; Path style requests work only when the endpoint (what we call
+;; `s3-host`) matches the location of the bucket. However they
+;; permit less-restrictive names for US Standard buckets,
+;; e.g. capital letters.
+;;
+;; Virtual host style requests work with the s3.amazonaws.com
+;; endpoint regardless of location. Only downside is that the bucket
+;; names are more restrictive -- see `valid-bucket-name?`.
+;;
 ;; See http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAPI.html
 (define s3-path-requests? (make-parameter #f))
 
@@ -324,7 +333,7 @@
                            [(regexp "<Error>.*?</Error>")
                             (raise (header&response->exn:fail:aws
                                     h e (current-continuation-marks)))]
-                           [else (void)])
+                           [_ (void)])
                          h)))
 
 ;; Our `end' arg is EXclusive
@@ -369,12 +378,7 @@
     (or/c #f exact-nonnegative-integer?)
     (or/c #f exact-nonnegative-integer?))
    . ->* . bytes?)
-  (get/proc bucket+path
-            (lambda (in h)
-              (read-entity/bytes in h))
-            heads
-            beg
-            end))
+  (get/proc bucket+path read-entity/bytes heads beg end))
 
 (define/contract/provide (get/file bucket+path
                                    path
@@ -794,12 +798,13 @@
               (string-append prefix (car p) "/"))))
 
     ;; delete and delete-multiple
-    (define more-files (for/list ([i (in-range 1 4)])
-                         (define fn (string-append (test/path) "-" (number->string i)))
-                         (put/bytes (string-append bucket "/" fn)
-                                    (make-bytes i (char->integer #\x))
-                                    default-mime-type)
-                         fn))
+    (define more-files
+      (for/list ([i (in-range 1 4)])
+        (define fn (string-append (test/path) "-" (number->string i)))
+        (put/bytes (string-append bucket "/" fn)
+                   (make-bytes i (char->integer #\x))
+                   default-mime-type)
+        fn))
     (check-equal? (ls (string-append bucket "/")) (cons (test/path) more-files))
     (delete (string-append bucket "/" (car more-files)))
     (check-equal? (ls (string-append bucket "/")) (cons (test/path) (cdr more-files)))
@@ -825,7 +830,7 @@
     (check-true (member? (string-append (test/path) "-copy")
                          (ls b+p/copy)))
 
-    ;; Try put/get file, both simple and multipart
+    ;; Try put & get file, both simple and multipart
     (define (put&get-file put-using p)
       (define chksum (file->Content-MD5 p))
       (put-using b+p p #:mime-type "text/plain")
