@@ -745,7 +745,20 @@
      (check-equal? (path->Content-Disposition "c:\\foo\\bar\\test.txt")
                    "attachment; filename=\"test.txt\"")))
 
-  ;; ------------------------------------------------------------
+  ;; Append an incrementing suffix to bucket names used in
+  ;; `test-bucket-ops`. Rationale: There can be intermittent errors --
+  ;; such as a 404 NoSuchUpload for multipart uploads -- when the same
+  ;; name is used to create, delete and recreate buckets within a
+  ;; short amount of time. As best I understand it, this is due to
+  ;; redirects and/or DNS updates, as described here in the AWS docs:
+  ;; http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingRouting.html
+  ;; Because rapid reuse of a bucket name is not typical of real-world
+  ;; usage -- just of unit tests -- I feel comfortable making the
+  ;; tests _not_ reuse the same name, in order to avoid such
+  ;; errors. Especially after spending many, many hours trying to
+  ;; figure out the source of the intermittent errors, and looking for
+  ;; any other reasonable way to address this.
+  (define bucket-suffix 0)
   (define/contract (test-bucket-ops region)
     ((or/c #f string?) . -> . any)
 
@@ -754,7 +767,9 @@
             (s3-host)
             region)
 
-    (define bucket (string-append (test/bucket) "-" (or region "us-standard")))
+    (define bucket (format "~a-~a-~a"
+                           (test/bucket) (or region "us-standard") bucket-suffix))
+    (set! bucket-suffix (add1 bucket-suffix))
 
     (ensure-have-keys)
 
