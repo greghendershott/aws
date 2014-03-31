@@ -854,16 +854,16 @@
     (put&get-file put/file p)
     (put&get-file multipart-put/file p)
 
-    ;; Multipart upload: Do with enough parts to exercise the worker
-    ;; pool of 4 threads. How about 8 parts.
-    (define part-size 5MB) ;minimum S3 will accept for multipart parts
-    (define (get-part-bytes n) (make-bytes part-size n))
-    (define num-parts 8)
-    (multipart-put b+p num-parts get-part-bytes)
-    (for ([i (in-range num-parts)])
-      ;; This is also an opportunity to test Range requests ability:
-      (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
-                    (get-part-bytes i)))
+    ;; ;; Multipart upload: Do with enough parts to exercise the worker
+    ;; ;; pool of 4 threads. How about 8 parts.
+    ;; (define part-size 5MB) ;minimum S3 will accept for multipart parts
+    ;; (define (get-part-bytes n) (make-bytes part-size n))
+    ;; (define num-parts 8)
+    ;; (multipart-put b+p num-parts get-part-bytes)
+    ;; (for ([i (in-range num-parts)])
+    ;;   ;; This is also an opportunity to test Range requests ability:
+    ;;   (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+    ;;                 (get-part-bytes i)))
 
     ;; Cleanup
     (delete b+p/copy)
