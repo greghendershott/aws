@@ -66,9 +66,6 @@
                (equal? c #\-)
                (equal? c #\_))))]))
 
-;; Use the URI format where the bucket is part of the path, not part
-;; of the host name, because that supports bucket names that contain
-;; capital letters.
 (define/contract/provide (bucket&path->uri b p)
   (string? string? . -> . string?)
   (cond [(s3-path-requests?)
