@@ -160,7 +160,30 @@ exception. It assumes you are using `call/requests`,
 library (or using `dynamic-wind` or other exception handling, or a
 custodian—or whatever) to make sure the port is closed!
 
-# 5. S3 (Storage)
+# 5. Connection pooling
+
+This library uses the [http](https://github.com/greghendershott/http)
+package to make HTTP connections to AWS. You may cause connections to be
+reused ("pooled") by setting the
+[current-pool-timeout](https://github.com/greghendershott/http/blob/master/http/manual.md\#12-connections-and-requests)
+parameter to some non-zero number of seconds.
+
+This can be faster, especially for many small requests in a row.
+
+In the following example, the first `list-buckets` request will leave
+the connection open for 30 seconds. As a result, the second
+`list-buckets` request will reuse the same connection. After another 30
+seconds, the connection will be closed automatically.
+
+```racket
+(require http/request                    
+         aws/s3)                         
+(parameterize ([current-pool-timeout 30])
+  (list-buckets)                         
+  (list-buckets))                        
+```
+
+# 6. S3 (Storage)
 
 ```racket
  (require aws/s3) package: aws
@@ -187,7 +210,7 @@ have S3 ignore it and you have to transmit it all over again. Instead,
 you want to supply the request header `Expect: 100-continue`, which lets
 S3 respond _before_ you transmit the entity.
 
-## 5.1. Request Method
+## 6.1. Request Method
 
 ```racket
 (s3-path-requests?) -> boolean?
@@ -202,7 +225,7 @@ Style" as described
 legacy US Standard bucket with a name that doesn’t meet the restrictions
 for DNS – for which `(valid-bucket-name? name #t)` returns `#f`.)
 
-## 5.2. Endpoint
+## 6.2. Endpoint
 
 ```racket
 (s3-host) -> string?
@@ -223,7 +246,7 @@ column](http://docs.aws.amazon.com/general/latest/gr/rande.html\#s3\_region).
 The scheme used for the S3 REST API. Defaults to `"http"`. Set to
 `"https"` to connect using SSL.
 
-## 5.3. Authentication signatures
+## 6.3. Authentication signatures
 
 ```racket
 (bucket&path->uri bucket path-to-resource) -> string?
@@ -269,7 +292,7 @@ Example:
 Return the URI and headers for which to make an HTTP request to S3.
 Constructs an `Authorization` header based on the inputs.
 
-## 5.4. Conveniences
+## 6.4. Conveniences
 
 ```racket
 (create-bucket bucket-name [location]) -> void?
@@ -667,7 +690,7 @@ To use reduced redundancy storage, supply `(hash 'x-amz-storage-class
 A procedure which takes a `path-string?` and returns a `string?` with a
 MIME type.
 
-## 5.5. Multipart uploads
+## 6.5. Multipart uploads
 
 In addition to uploading an entire object in a single `PUT` request, S3
 lets you upload it in multiple 5 MB or larger chunks, using the
@@ -676,7 +699,7 @@ API](http://docs.amazonwebservices.com/AmazonS3/2006-03-01/dev/UsingRESTAPImpUpl
 Amazon recommends using this when the total data to upload is bigger
 than about 100 MB.
 
-### 5.5.1. Convenience
+### 6.5.1. Convenience
 
 ```racket
 (multipart-put  bucket+path                                 
@@ -717,7 +740,7 @@ Like `put/file` but uses multipart upload.
 The parts are uploaded using a small number of worker threads, to get
 some parallelism and probably better performance.
 
-### 5.5.2. Building blocks
+### 6.5.2. Building blocks
 
 Use these if the data you’re uploading is computed on the fly and you
 don’t know the total size in advance. Otherwise you may simply use
@@ -783,7 +806,7 @@ Returns S3’s XML response in the form of an `xexpr?`.
 Abort the multipart upload specified by the `upload-id` returned from
 `initiate-multipart-upload`.
 
-## 5.6. S3 examples
+## 6.6. S3 examples
 
 ```racket
 (require aws/keys                                                   
@@ -838,7 +861,7 @@ Abort the multipart upload specified by the `upload-id` returned from
 (delete-bucket test-bucket)                                         
 ```
 
-# 6. SDB (Database)
+# 7. SDB (Database)
 
 ```racket
  (require aws/sdb) package: aws
@@ -857,7 +880,7 @@ with the key `"Sizes"` might have the values `"Small"`, `"Medium"`, and
 `"Large"`. The values should be considered a strict set (just one
 occurrence of each unique value).
 
-## 6.1. Making requests to SDB
+## 7.1. Making requests to SDB
 
 ```racket
 (sdb-endpoint) -> endpoint?
@@ -968,7 +991,7 @@ is not an error.
 Execute the SQL-ish `expr`. See the SDB docs for the subset of SQL that
 is supported.
 
-## 6.2. Batch
+## 7.2. Batch
 
 ```racket
 (batch-put-attributes domain-name xs) -> any                      
@@ -988,7 +1011,7 @@ items in one request.
 For efficiency, SDB provides this to delete put multiple attributes from
 multiple items in one request.
 
-## 6.3. Hash/Set style
+## 7.3. Hash/Set style
 
 ```racket
 (put-attributes-hash domain item attribs) -> void?
@@ -1022,7 +1045,7 @@ parameter `Replace=true`—to clear any/all existing values. The other
 values for the attribute are put with `Replace=false`—to preserve all of
 the multiple new values we are setting.)
 
-## 6.4. Values as strings
+## 7.4. Values as strings
 
 SDB stores all values as strings. You choose how a number is represented
 as a string. Your choice matters for sorts and compares. The SDB docs
@@ -1102,7 +1125,7 @@ Examples:
 "4294967296"                    
 ```
 
-## 6.5. SDB Examples
+## 7.5. SDB Examples
 
 In the examples below, the reason for using `sleep` is that SDB has an
 “eventual consistency” model. As a result, there may be a short delay
@@ -1182,7 +1205,7 @@ before the values we set are available to get.
 (delete-domain test-domain)                                          
 ```
 
-# 7. SES (Email)
+# 8. SES (Email)
 
 ```racket
  (require aws/ses) package: aws
@@ -1317,7 +1340,7 @@ SES.
 If SES adds new actions and this library isn’t updated to support them,
 you may be able to support them by setting the `Action` parameter.
 
-# 8. SNS (Notifications)
+# 9. SNS (Notifications)
 
 ```racket
  (require aws/sns) package: aws
@@ -1425,7 +1448,7 @@ Delete a subscription.
 Publish a notification message to a topic. If `#:json?` is `#t` then
 `message` must be valid JSON or SNS will return an error.
 
-# 9. SQS (Queues)
+# 10. SQS (Queues)
 
 ```racket
  (require aws/sqs) package: aws
@@ -1540,7 +1563,7 @@ Delete a message from a queue.
 
 Change the visibility time of a message already in a queue.
 
-# 10. Route 53 (DNS)
+# 11. Route 53 (DNS)
 
 ```racket
  (require aws/r53) package: aws
@@ -1651,7 +1674,7 @@ request")
                                    (Value "1.2.3.4")))))))))         
 ```
 
-# 11. Dynamo DB
+# 12. Dynamo DB
 
 ```racket
  (require aws/dynamo) package: aws
@@ -1770,7 +1793,7 @@ similarly-named functions.
 
 * [update-table](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API\_UpdateTable.html)
 
-# 12. CloudWatch (Monitoring)
+# 13. CloudWatch (Monitoring)
 
 ```racket
  (require aws/cw) package: aws
@@ -1798,7 +1821,7 @@ support applications not “infrastucture.”)
 Set the endpoint for the service. Defaults to `(endpoint
 "monitoring.us-east-1.amazonaws.com" #t)`.
 
-## 12.1. Contracts
+## 13.1. Contracts
 
 ```racket
 unit/c : (or/c 'None                                             
@@ -1838,7 +1861,7 @@ A contract for the `Statistic` values that CloudWatch knows about.
 dimensions/c : (listof (list/c symbol? string?))
 ```
 
-## 12.2. Putting metric data and getting statistics
+## 13.2. Putting metric data and getting statistics
 
 ```racket
 (struct datum                                (metric-name
@@ -1916,7 +1939,7 @@ by specifying them in `statistics`.  For example if `statistics`
 includes the symbol `'Sum`, then the `sum` member will be non-`#f`,
 otherwise it will be `#f`.
 
-## 12.3. Listing metrics
+## 13.3. Listing metrics
 
 ```racket
 (struct metric (name namespace dimensions)   
@@ -1937,7 +1960,7 @@ otherwise it will be `#f`.
 
 Return a list of `metric?` meeting the criteria.
 
-## 12.4. Alarms
+## 13.4. Alarms
 
 ```racket
 (struct alarm                                (name                          
@@ -2050,7 +2073,7 @@ but all CloudWatch timestamps are UTC not local time.
 
 Return the history for alarms meeting the criteria.
 
-# 13. Glacier (Archives)
+# 14. Glacier (Archives)
 
 ```racket
  (require aws/glacier) package: aws
@@ -2060,7 +2083,7 @@ Return the history for alarms meeting the criteria.
 provides storage for archiving. You can store objects less expensively
 than using S3. The trade-off is that it is very slow to retreive them.
 
-## 13.1. Region
+## 14.1. Region
 
 ```racket
 (region) -> string?
@@ -2070,7 +2093,7 @@ than using S3. The trade-off is that it is very slow to retreive them.
 
 Set the region. Defaults to `"us-east-1"`.
 
-## 13.2. Vaults
+## 14.2. Vaults
 
 ```racket
 (create-vault name) -> (or/c #t exn:fail:aws?)
@@ -2117,7 +2140,7 @@ in a `jsexpr?`.
 vault](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-get.html)
 in a `jsexpr?`.
 
-## 13.3. Vault notifications
+## 14.3. Vault notifications
 
 ```racket
 (set-vault-notifications name                                 
@@ -2146,7 +2169,7 @@ Get a vault’s notification configuration.
 
 Delete a vault’s notification configuration.
 
-## 13.4. Archives
+## 14.4. Archives
 
 ```racket
 (create-archive vault-name                    
@@ -2179,7 +2202,7 @@ with data from a file and return its archive ID.
 
 Delete an archive.
 
-## 13.5. Retrieval jobs
+## 14.5. Retrieval jobs
 
 ```racket
 (retrieve-inventory  vault-name                
@@ -2242,7 +2265,7 @@ job](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-g
 and put it in a file. Return a `boolean?` whether the output matches its
 `x-amz-sha256-tree-hash`.
 
-## 13.6. Example: Backup using Glacier and SDB
+## 14.6. Example: Backup using Glacier and SDB
 
 This example can be found in `examples/backup.rkt`.
 
@@ -2317,7 +2340,7 @@ This example can be found in `examples/backup.rkt`.
 (select-hash (format "SELECT * FROM ~a" archive->meta-domain))                  
 ```
 
-# 14. Utilities
+# 15. Utilities
 
 ```racket
  (require aws/util) package: aws
@@ -2376,7 +2399,7 @@ you care about extracting a few specific elements.
 Given `xexpr`, return the value of just the first element having tag
 `tag`, or if none found, `def`.
 
-# 15. Unit tests
+# 16. Unit tests
 
 The `rackunit` tests use the `test` submodule feature added in Racket
 5.3. To run all tests, use the shell command, `raco test ./`.
@@ -2425,7 +2448,7 @@ review all of them to make sure they are suitable for you.
 `# Name of a test domain (i.e. "table") on SDB.`                       
 `test/domain = TestDomain`                                             
 
-# 16. License
+# 17. License
 
 Copyright (c) 2012, Greg Hendershott. All rights reserved.
 

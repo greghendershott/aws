@@ -174,6 +174,32 @@ closed!
 }
 
 @; ----------------------------------------------------------------------------
+@section{Connection pooling}
+
+This library uses the
+@hyperlink["https://github.com/greghendershott/http" "http"] package
+to make HTTP connections to AWS. You may cause connections to be
+reused ("pooled") by setting the
+@hyperlink["https://github.com/greghendershott/http/blob/master/http/manual.md#12-connections-and-requests"
+"current-pool-timeout"] parameter to some non-zero number of seconds.
+
+This can be faster, especially for many small requests in a row.
+
+In the following example, the first @racket[list-buckets] request will
+leave the connection open for 30 seconds. As a result, the second
+@racket[list-buckets] request will reuse the same connection. After
+another 30 seconds, the connection will be closed automatically.
+
+@racketblock[
+(require http/request
+         aws/s3)
+(parameterize ([current-pool-timeout 30])
+  (list-buckets)
+  (list-buckets))
+]
+
+
+@; ----------------------------------------------------------------------------
 @section{S3 (Storage)}
 
 @defmodule[aws/s3]
