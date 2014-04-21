@@ -489,12 +489,10 @@
 (define (verify-file path tree-hash)
   (with-input-from-file path
     (lambda ()
-      (define ok?
-        (equal? (bytes->hex-string
-                  (hashes->tree-hash (for/list ([i (in-range 0 (file-size path) 1MB)])
-                                       (sha256 (read-bytes 1MB)))))
-                tree-hash))
-      (displayln ok?))))
+      (equal? (bytes->hex-string
+                (hashes->tree-hash (for/list ([i (in-range 0 (file-size path) 1MB)])
+                                     (sha256 (read-bytes 1MB)))))
+              tree-hash))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
