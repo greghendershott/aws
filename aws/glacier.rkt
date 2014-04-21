@@ -20,6 +20,7 @@
          create-archive/multipart-upload
          create-archive-from-file
          create-archive-from-port
+         delete-archive
          valid-part-size?
          retrieve-inventory
          retrieve-archive
