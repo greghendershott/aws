@@ -2116,6 +2116,22 @@ its archive ID.
 
 }
 
+@defproc[(create-archive-from-port
+[vault-name string?]
+[port input-port?]
+[description string?]
+[#:part-size part-size exact-nonnegative-integer? (* 1024 1024)]
+) string?]{
+
+@hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-archive-post.html"
+"Create an archive" #:underline? #f] with data from a port and return its
+archive ID.
+
+Data is uploaded @racket[part-size] bytes at a time, where @racket[part-size]
+is a power of two no smaller than @racket[1048576] (1MB) and no larger than
+@racket[4294967296] (4GB).
+
+}
 
 @defproc[(create-archive-from-file
 [vault-name string?]

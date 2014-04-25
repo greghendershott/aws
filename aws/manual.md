@@ -1,11 +1,11 @@
-Amazon Web Services
+# Amazon Web Services
 
-# 1. Introduction
+## 1. Introduction
 
 This libary provides support for many of the [Amazon Web
 Services](http://aws.amazon.com/documentation/).
 
-## 1.1. Which services?
+### 1.1. Which services?
 
 The services supported are those most likely to be used both
 
@@ -28,7 +28,7 @@ Likewise RDS: Although Amazon lets you programatically create and manage
 database servers, your application uses them in the usual way, for
 example via Racket’s `db` library.
 
-## 1.2. Scope
+### 1.2. Scope
 
 The goal is to provide enough “wrapper” around a service’s HTTP
 interface to make it convenient to use from Racket, but not obscure the
@@ -49,7 +49,7 @@ This library uses my `http` library to make HTTP requests, instead of
 100-continue` request header (to fail `PUT` requests quickly) and the
 `Range` request header (a sort of `subbytes` for `GET`s).
 
-# 2. Names
+## 2. Names
 
 The names of procedures and structs do _not_ have special prefixes to
 “group” them.  Instead, use the `prefix-in` option for `require` if you
@@ -63,10 +63,10 @@ prefix, so that `create-topic` is renamed to `sns-create-topic`:
 (sns-create-topic "foobar")       
 ```
 
-# 3. AWS Keys
+## 3. AWS Keys
 
 ```racket
- (require aws/keys) package: aws
+ (require aws/keys)
 ```
 
 ```racket
@@ -108,18 +108,18 @@ If either `public-key` or `private-key` is `""`, calls `read-keys`. If
 either is _still_ blank, calls `error` with a hopefully helpful reminder
 about how to set the parameters.
 
-# 4. Exception handling
+## 4. Exception handling
 
 Most of the functions do not return a failure value. Instead they raise
 `exn:fail:aws`, which you need to “catch” using `with-handlers`.
 
 ```racket
- (require aws/exn) package: aws
+ (require aws/exn)
 ```
 
 ```racket
 (struct exn:fail:aws (http-code http-message aws-code aws-message)
-        #:extra-constructor-name make-exn:fail:aws)               
+    #:extra-constructor-name make-exn:fail:aws)                   
   http-code : exact-positive-integer?                             
   http-message : string?                                          
   aws-code : string?                                              
@@ -160,7 +160,7 @@ exception. It assumes you are using `call/requests`,
 library (or using `dynamic-wind` or other exception handling, or a
 custodian—or whatever) to make sure the port is closed!
 
-# 5. Connection pooling
+## 5. Connection pooling
 
 This library uses the [http](https://github.com/greghendershott/http)
 package to make HTTP connections to AWS. You may cause connections to be
@@ -183,10 +183,10 @@ seconds, the connection will be closed automatically.
   (list-buckets))                        
 ```
 
-# 6. S3 (Storage)
+## 6. S3 (Storage)
 
 ```racket
- (require aws/s3) package: aws
+ (require aws/s3)
 ```
 
 [S3](http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html)
@@ -210,7 +210,7 @@ have S3 ignore it and you have to transmit it all over again. Instead,
 you want to supply the request header `Expect: 100-continue`, which lets
 S3 respond _before_ you transmit the entity.
 
-## 6.1. Request Method
+### 6.1. Request Method
 
 ```racket
 (s3-path-requests?) -> boolean?
@@ -225,7 +225,7 @@ Style" as described
 legacy US Standard bucket with a name that doesn’t meet the restrictions
 for DNS – for which `(valid-bucket-name? name #t)` returns `#f`.)
 
-## 6.2. Endpoint
+### 6.2. Endpoint
 
 ```racket
 (s3-host) -> string?
@@ -246,7 +246,7 @@ column](http://docs.aws.amazon.com/general/latest/gr/rande.html\#s3\_region).
 The scheme used for the S3 REST API. Defaults to `"http"`. Set to
 `"https"` to connect using SSL.
 
-## 6.3. Authentication signatures
+### 6.3. Authentication signatures
 
 ```racket
 (bucket&path->uri bucket path-to-resource) -> string?
@@ -292,7 +292,7 @@ Example:
 Return the URI and headers for which to make an HTTP request to S3.
 Constructs an `Authorization` header based on the inputs.
 
-## 6.4. Conveniences
+### 6.4. Conveniences
 
 ```racket
 (create-bucket bucket-name [location]) -> void?
@@ -690,7 +690,7 @@ To use reduced redundancy storage, supply `(hash 'x-amz-storage-class
 A procedure which takes a `path-string?` and returns a `string?` with a
 MIME type.
 
-## 6.5. Multipart uploads
+### 6.5. Multipart uploads
 
 In addition to uploading an entire object in a single `PUT` request, S3
 lets you upload it in multiple 5 MB or larger chunks, using the
@@ -699,7 +699,7 @@ API](http://docs.amazonwebservices.com/AmazonS3/2006-03-01/dev/UsingRESTAPImpUpl
 Amazon recommends using this when the total data to upload is bigger
 than about 100 MB.
 
-### 6.5.1. Convenience
+#### 6.5.1. Convenience
 
 ```racket
 (multipart-put  bucket+path                                 
@@ -740,7 +740,7 @@ Like `put/file` but uses multipart upload.
 The parts are uploaded using a small number of worker threads, to get
 some parallelism and probably better performance.
 
-### 6.5.2. Building blocks
+#### 6.5.2. Building blocks
 
 Use these if the data you’re uploading is computed on the fly and you
 don’t know the total size in advance. Otherwise you may simply use
@@ -806,7 +806,7 @@ Returns S3’s XML response in the form of an `xexpr?`.
 Abort the multipart upload specified by the `upload-id` returned from
 `initiate-multipart-upload`.
 
-## 6.6. S3 examples
+### 6.6. S3 examples
 
 ```racket
 (require aws/keys                                                   
@@ -861,10 +861,10 @@ Abort the multipart upload specified by the `upload-id` returned from
 (delete-bucket test-bucket)                                         
 ```
 
-# 7. SDB (Database)
+## 7. SDB (Database)
 
 ```racket
- (require aws/sdb) package: aws
+ (require aws/sdb)
 ```
 
 [SimpleDB](http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html)
@@ -880,7 +880,7 @@ with the key `"Sizes"` might have the values `"Small"`, `"Medium"`, and
 `"Large"`. The values should be considered a strict set (just one
 occurrence of each unique value).
 
-## 7.1. Making requests to SDB
+### 7.1. Making requests to SDB
 
 ```racket
 (sdb-endpoint) -> endpoint?
@@ -991,7 +991,7 @@ is not an error.
 Execute the SQL-ish `expr`. See the SDB docs for the subset of SQL that
 is supported.
 
-## 7.2. Batch
+### 7.2. Batch
 
 ```racket
 (batch-put-attributes domain-name xs) -> any                      
@@ -1011,7 +1011,7 @@ items in one request.
 For efficiency, SDB provides this to delete put multiple attributes from
 multiple items in one request.
 
-## 7.3. Hash/Set style
+### 7.3. Hash/Set style
 
 ```racket
 (put-attributes-hash domain item attribs) -> void?
@@ -1025,7 +1025,7 @@ multiple items in one request.
 (select-hash expr) -> (listof item?)              
   expr : string?                                  
 (struct item (name attribs)                       
-        #:extra-constructor-name make-item)       
+    #:extra-constructor-name make-item)           
   name : string?                                  
   attribs : (hash/c symbol? (set/c string?))      
 ```
@@ -1045,7 +1045,7 @@ parameter `Replace=true`—to clear any/all existing values. The other
 values for the attribute are put with `Replace=false`—to preserve all of
 the multiple new values we are setting.)
 
-## 7.4. Values as strings
+### 7.4. Values as strings
 
 SDB stores all values as strings. You choose how a number is represented
 as a string. Your choice matters for sorts and compares. The SDB docs
@@ -1125,7 +1125,7 @@ Examples:
 "4294967296"                    
 ```
 
-## 7.5. SDB Examples
+### 7.5. SDB Examples
 
 In the examples below, the reason for using `sleep` is that SDB has an
 “eventual consistency” model. As a result, there may be a short delay
@@ -1205,10 +1205,10 @@ before the values we set are available to get.
 (delete-domain test-domain)                                          
 ```
 
-# 8. SES (Email)
+## 8. SES (Email)
 
 ```racket
- (require aws/ses) package: aws
+ (require aws/ses)
 ```
 
 Please refer to the [SES
@@ -1297,31 +1297,31 @@ Unverify the email address.
 Return the list of email addresses currently verified with SES.
 
 ```racket
-(get-send-quota) -> send-quota?                                      
-(struct send-quota                                (sent-last-24-hours
-                                                  max-24-hour-send   
-                                                  max-send-rate)     
-        #:extra-constructor-name make-send-quota)                    
-  sent-last-24-hours : number?                                       
-  max-24-hour-send : number?                                         
-  max-send-rate : number?                                            
+(get-send-quota) -> send-quota?              
+(struct send-quota (sent-last-24-hours       
+                    max-24-hour-send         
+                    max-send-rate)           
+    #:extra-constructor-name make-send-quota)
+  sent-last-24-hours : number?               
+  max-24-hour-send : number?                 
+  max-send-rate : number?                    
 ```
 
 Get the send quota.
 
 ```racket
-(get-send-statistics) -> (listof send-statistic?)                      
-(struct send-statistic                                (time            
-                                                      delivery-attempts
-                                                      rejects          
-                                                      bounces          
-                                                      complaints)      
-        #:extra-constructor-name make-send-statistic)                  
-  time : string?                                                       
-  delivery-attempts : number?                                          
-  rejects : number?                                                    
-  bounces : number?                                                    
-  complaints : number?                                                 
+(get-send-statistics) -> (listof send-statistic?)
+(struct send-statistic (time                     
+                        delivery-attempts        
+                        rejects                  
+                        bounces                  
+                        complaints)              
+    #:extra-constructor-name make-send-statistic)
+  time : string?                                 
+  delivery-attempts : number?                    
+  rejects : number?                              
+  bounces : number?                              
+  complaints : number?                           
 ```
 
 Get send statistics. Although SES keeps statistics for only your last 14
@@ -1340,10 +1340,10 @@ SES.
 If SES adds new actions and this library isn’t updated to support them,
 you may be able to support them by setting the `Action` parameter.
 
-# 9. SNS (Notifications)
+## 9. SNS (Notifications)
 
 ```racket
- (require aws/sns) package: aws
+ (require aws/sns)
 ```
 
 [SNS](http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480)
@@ -1398,20 +1398,20 @@ Get the attributes for a topic as an association list.
 Get the ARN for all SNS topics for the AWS account.
 
 ```racket
-(struct subscription                                (protocol       
-                                                    owner           
-                                                    topic-arn       
-                                                    subscription-arn
-                                                    endpoint)       
-        #:extra-constructor-name make-subscription)                 
-  protocol : string?                                                
-  owner : string?                                                   
-  topic-arn : string?                                               
-  subscription-arn : string?                                        
-  endpoint : string?                                                
-(list-subscriptions) -> (listof subscription?)                      
-(list-subscriptions-by-topic arn) -> (listof subscription?)         
-  arn : string?                                                     
+(struct subscription (protocol                             
+                      owner                                
+                      topic-arn                            
+                      subscription-arn                     
+                      endpoint)                            
+    #:extra-constructor-name make-subscription)            
+  protocol : string?                                       
+  owner : string?                                          
+  topic-arn : string?                                      
+  subscription-arn : string?                               
+  endpoint : string?                                       
+(list-subscriptions) -> (listof subscription?)             
+(list-subscriptions-by-topic arn) -> (listof subscription?)
+  arn : string?                                            
 ```
 
 Get subscriptions for all topic, or just those for a given topic.
@@ -1448,10 +1448,10 @@ Delete a subscription.
 Publish a notification message to a topic. If `#:json?` is `#t` then
 `message` must be valid JSON or SNS will return an error.
 
-# 10. SQS (Queues)
+## 10. SQS (Queues)
 
 ```racket
- (require aws/sqs) package: aws
+ (require aws/sqs)
 ```
 
 [SQS](http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html)
@@ -1516,7 +1516,7 @@ of SQS.
 
 ```racket
 (struct message (body md5 receipt-handle attributes)            
-        #:extra-constructor-name make-message)                  
+    #:extra-constructor-name make-message)                      
   body : string?                                                
   md5 : string?                                                 
   receipt-handle : string?                                      
@@ -1563,10 +1563,10 @@ Delete a message from a queue.
 
 Change the visibility time of a message already in a queue.
 
-# 11. Route 53 (DNS)
+## 11. Route 53 (DNS)
 
 ```racket
- (require aws/r53) package: aws
+ (require aws/r53)
 ```
 
 [Route
@@ -1674,10 +1674,10 @@ request")
                                    (Value "1.2.3.4")))))))))         
 ```
 
-# 12. Dynamo DB
+## 12. Dynamo DB
 
 ```racket
- (require aws/dynamo) package: aws
+ (require aws/dynamo)
 ```
 
 [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html)
@@ -1793,10 +1793,10 @@ similarly-named functions.
 
 * [update-table](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API\_UpdateTable.html)
 
-# 13. CloudWatch (Monitoring)
+## 13. CloudWatch (Monitoring)
 
 ```racket
- (require aws/cw) package: aws
+ (require aws/cw)
 ```
 
 Among the Amazon Web Services, the
@@ -1821,20 +1821,21 @@ support applications not “infrastucture.”)
 Set the endpoint for the service. Defaults to `(endpoint
 "monitoring.us-east-1.amazonaws.com" #t)`.
 
-## 13.1. Contracts
+### 13.1. Contracts
 
 ```racket
-unit/c : (or/c 'None                                             
-               'Percent                                          
-               'Count                                            
-               'Seconds 'Microseconds 'Milliseconds              
-               'Bytes 'Kilobytes 'Megabytes 'Gigabytes 'Terabytes
-               'Bits 'Kilobits 'Megabits 'Gigabits 'Terabits     
-               'Count/Second                                     
-               'Bytes/Second 'Kilobytes/Second 'Megabytes/Second 
-                 'Gigabytes/Second 'Terabytes/Second             
-               'Bits/Second 'Kilobits/Second 'Megabits/Second    
-                 'Gigabits/Second 'Terabits/Second)              
+unit/c                                                     
+ : (or/c 'None                                             
+         'Percent                                          
+         'Count                                            
+         'Seconds 'Microseconds 'Milliseconds              
+         'Bytes 'Kilobytes 'Megabytes 'Gigabytes 'Terabytes
+         'Bits 'Kilobits 'Megabits 'Gigabits 'Terabits     
+         'Count/Second                                     
+         'Bytes/Second 'Kilobytes/Second 'Megabytes/Second 
+           'Gigabytes/Second 'Terabytes/Second             
+         'Bits/Second 'Kilobits/Second 'Megabits/Second    
+           'Gigabits/Second 'Terabits/Second)              
 ```
 
 A contract for the `Units` that CloudWatch accepts.
@@ -1852,7 +1853,8 @@ A contract for the `period` argument to `get-metric-statistcs` and
 non-zero multiple of 60 seconds.
 
 ```racket
-statistic/c : (or/c 'Sum 'Average 'Maximum 'Minimum 'SampleCount)
+statistic/c                                           
+ : (or/c 'Sum 'Average 'Maximum 'Minimum 'SampleCount)
 ```
 
 A contract for the `Statistic` values that CloudWatch knows about.
@@ -1861,28 +1863,28 @@ A contract for the `Statistic` values that CloudWatch knows about.
 dimensions/c : (listof (list/c symbol? string?))
 ```
 
-## 13.2. Putting metric data and getting statistics
+### 13.2. Putting metric data and getting statistics
 
 ```racket
-(struct datum                                (metric-name
-                                             value       
-                                             min         
-                                             max         
-                                             sum         
-                                             sample-count
-                                             unit        
-                                             timestamp   
-                                             dimensions) 
-        #:extra-constructor-name make-datum)             
-  metric-name : string?                                  
-  value : (or/c #f number?)                              
-  min : (or/c #f number?)                                
-  max : (or/c #f number?)                                
-  sum : (or/c #f number?)                                
-  sample-count : (or/c #f number?)                       
-  unit : unit/c                                          
-  timestamp : exact-integer?                             
-  dimensions : dimensions/c                              
+(struct datum (metric-name              
+               value                    
+               min                      
+               max                      
+               sum                      
+               sample-count             
+               unit                     
+               timestamp                
+               dimensions)              
+    #:extra-constructor-name make-datum)
+  metric-name : string?                 
+  value : (or/c #f number?)             
+  min : (or/c #f number?)               
+  max : (or/c #f number?)               
+  sum : (or/c #f number?)               
+  sample-count : (or/c #f number?)      
+  unit : unit/c                         
+  timestamp : exact-integer?            
+  dimensions : dimensions/c             
 ```
 
 This struct is accepted by `put-metric-data` and returned by
@@ -1939,14 +1941,14 @@ by specifying them in `statistics`.  For example if `statistics`
 includes the symbol `'Sum`, then the `sum` member will be non-`#f`,
 otherwise it will be `#f`.
 
-## 13.3. Listing metrics
+### 13.3. Listing metrics
 
 ```racket
-(struct metric (name namespace dimensions)   
-        #:extra-constructor-name make-metric)
-  name : string?                             
-  namespace : string?                        
-  dimensions : dimensions/c                  
+(struct metric (name namespace dimensions)
+    #:extra-constructor-name make-metric) 
+  name : string?                          
+  namespace : string?                     
+  dimensions : dimensions/c               
 ```
 
 ```racket
@@ -1960,50 +1962,50 @@ otherwise it will be `#f`.
 
 Return a list of `metric?` meeting the criteria.
 
-## 13.4. Alarms
+### 13.4. Alarms
 
 ```racket
-(struct alarm                                (name                          
-                                             description                    
-                                             arn                            
-                                             configuration-updated-timestamp
-                                             metric-name                    
-                                             namespace                      
-                                             threshold                      
-                                             comparison-operator            
-                                             alarm-actions                  
-                                             ok-actions                     
-                                             insufficient-data-actions      
-                                             state-value                    
-                                             state-reason                   
-                                             state-reason-data              
-                                             state-updated-timestamp        
-                                             period                         
-                                             actions-enabled                
-                                             evaluation-periods             
-                                             statistic                      
-                                             dimensions)                    
-        #:extra-constructor-name make-alarm)                                
-  name : string?                                                            
-  description : string?                                                     
-  arn : string?                                                             
-  configuration-updated-timestamp : exact-integer?                          
-  metric-name : string?                                                     
-  namespace : string?                                                       
-  threshold : number?                                                       
-  comparison-operator : string?                                             
-  alarm-actions : xexpr?                                                    
-  ok-actions : xexpr?                                                       
-  insufficient-data-actions : xexpr?                                        
-  state-value : string?                                                     
-  state-reason : string?                                                    
-  state-reason-data : string?                                               
-  state-updated-timestamp : exact-integer?                                  
-  period : period/c                                                         
-  actions-enabled : boolean?                                                
-  evaluation-periods : exact-nonnegative-integer                            
-  statistic : string?                                                       
-  dimensions : dimensions/c                                                 
+(struct alarm (name                               
+               description                        
+               arn                                
+               configuration-updated-timestamp    
+               metric-name                        
+               namespace                          
+               threshold                          
+               comparison-operator                
+               alarm-actions                      
+               ok-actions                         
+               insufficient-data-actions          
+               state-value                        
+               state-reason                       
+               state-reason-data                  
+               state-updated-timestamp            
+               period                             
+               actions-enabled                    
+               evaluation-periods                 
+               statistic                          
+               dimensions)                        
+    #:extra-constructor-name make-alarm)          
+  name : string?                                  
+  description : string?                           
+  arn : string?                                   
+  configuration-updated-timestamp : exact-integer?
+  metric-name : string?                           
+  namespace : string?                             
+  threshold : number?                             
+  comparison-operator : string?                   
+  alarm-actions : xexpr?                          
+  ok-actions : xexpr?                             
+  insufficient-data-actions : xexpr?              
+  state-value : string?                           
+  state-reason : string?                          
+  state-reason-data : string?                     
+  state-updated-timestamp : exact-integer?        
+  period : period/c                               
+  actions-enabled : boolean?                      
+  evaluation-periods : exact-nonnegative-integer  
+  statistic : string?                             
+  dimensions : dimensions/c                       
 ```
 
 A structure used by `describe-alarms` and `describe-alarms-for-metric`.
@@ -2044,7 +2046,7 @@ Return the alarms meeting the criteria.
 
 ```racket
 (struct alarm-history (timestamp item-type name data summary)
-        #:extra-constructor-name make-alarm-history)         
+    #:extra-constructor-name make-alarm-history)             
   timestamp : exact-integer?                                 
   item-type : symbol?                                        
   name : string?                                             
@@ -2073,17 +2075,17 @@ but all CloudWatch timestamps are UTC not local time.
 
 Return the history for alarms meeting the criteria.
 
-# 14. Glacier (Archives)
+## 14. Glacier (Archives)
 
 ```racket
- (require aws/glacier) package: aws
+ (require aws/glacier)
 ```
 
 [Glacier](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html)
 provides storage for archiving. You can store objects less expensively
 than using S3. The trade-off is that it is very slow to retreive them.
 
-## 14.1. Region
+### 14.1. Region
 
 ```racket
 (region) -> string?
@@ -2093,7 +2095,7 @@ than using S3. The trade-off is that it is very slow to retreive them.
 
 Set the region. Defaults to `"us-east-1"`.
 
-## 14.2. Vaults
+### 14.2. Vaults
 
 ```racket
 (create-vault name) -> (or/c #t exn:fail:aws?)
@@ -2140,7 +2142,7 @@ in a `jsexpr?`.
 vault](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-vault-get.html)
 in a `jsexpr?`.
 
-## 14.3. Vault notifications
+### 14.3. Vault notifications
 
 ```racket
 (set-vault-notifications name                                 
@@ -2169,7 +2171,7 @@ Get a vault’s notification configuration.
 
 Delete a vault’s notification configuration.
 
-## 14.4. Archives
+### 14.4. Archives
 
 ```racket
 (create-archive vault-name                    
@@ -2183,6 +2185,25 @@ Delete a vault’s notification configuration.
 [Create an
 archive](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-archive-post.html)
 containing the `data` and return its archive ID.
+
+```racket
+(create-archive-from-port  vault-name                        
+                           port                              
+                           description                       
+                          [#:part-size part-size]) -> string?
+  vault-name : string?                                       
+  port : input-port?                                         
+  description : string?                                      
+  part-size : exact-nonnegative-integer? = (* 1024 1024)     
+```
+
+[Create an
+archive](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-archive-post.html)
+with data from a port and return its archive ID.
+
+Data is uploaded `part-size` bytes at a time, where `part-size` is a
+power of two no smaller than `1048576` (1MB) and no larger than
+`4294967296` (4GB).
 
 ```racket
 (create-archive-from-file vault-name path) -> string?
@@ -2202,7 +2223,7 @@ with data from a file and return its archive ID.
 
 Delete an archive.
 
-## 14.5. Retrieval jobs
+### 14.5. Retrieval jobs
 
 ```racket
 (retrieve-inventory  vault-name                
@@ -2265,7 +2286,7 @@ job](http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-g
 and put it in a file. Return a `boolean?` whether the output matches its
 `x-amz-sha256-tree-hash`.
 
-## 14.6. Example: Backup using Glacier and SDB
+### 14.6. Example: Backup using Glacier and SDB
 
 This example can be found in `examples/backup.rkt`.
 
@@ -2340,20 +2361,20 @@ This example can be found in `examples/backup.rkt`.
 (select-hash (format "SELECT * FROM ~a" archive->meta-domain))                  
 ```
 
-# 15. Utilities
+## 15. Utilities
 
 ```racket
- (require aws/util) package: aws
+ (require aws/util)
 ```
 
 Although the following are mainly for internal use, they’re `provide`d
 in case you find them helpful.
 
 ```racket
-(struct endpoint (host ssl?)                   
-        #:extra-constructor-name make-endpoint)
-  host : string?                               
-  ssl? : boolean?                              
+(struct endpoint (host ssl?)               
+    #:extra-constructor-name make-endpoint)
+  host : string?                           
+  ssl? : boolean?                          
 ```
 
 Used to represent an AWS service endpoint.
@@ -2399,7 +2420,7 @@ you care about extracting a few specific elements.
 Given `xexpr`, return the value of just the first element having tag
 `tag`, or if none found, `def`.
 
-# 16. Unit tests
+## 16. Unit tests
 
 The `rackunit` tests use the `test` submodule feature added in Racket
 5.3. To run all tests, use the shell command, `raco test ./`.
@@ -2448,7 +2469,7 @@ review all of them to make sure they are suitable for you.
 `# Name of a test domain (i.e. "table") on SDB.`                       
 `test/domain = TestDomain`                                             
 
-# 17. License
+## 17. License
 
 Copyright (c) 2012, Greg Hendershott. All rights reserved.
 

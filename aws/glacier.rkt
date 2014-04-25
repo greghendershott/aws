@@ -19,9 +19,12 @@
          create-archive
          create-archive/multipart-upload
          create-archive-from-file
+         create-archive-from-port
+         delete-archive
          valid-part-size?
          retrieve-inventory
          retrieve-archive
+         list-jobs
          get-job-output
          get-job-output-to-file
          )
@@ -197,7 +200,7 @@
                   'Content-Length (bytes-length data)
                   'x-amz-glacier-version glacier-version
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
-                  'x-amz-sha256-tree-hash (tree-hash data)
+                  'x-amz-sha256-tree-hash (bytes->hex-string (tree-hash data))
                   'x-amz-archive-description desc
                   ))
   (call/output-request "1.1"
@@ -271,8 +274,8 @@
 ;; part but the last, where it must be <=.
 ;;
 ;; Returns #t unless it throws an exception.
-(define/contract (upload-part name upload-id offset data)
-  (string? string? exact-nonnegative-integer? bytes?  . -> . void)
+(define/contract (upload-part name upload-id part-size offset data tree-hash)
+  (string? string? valid-part-size? exact-nonnegative-integer? bytes? sha256? . -> . void)
   (log-aws-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
   (define m "PUT")
   (define u (string-append "http://" host "/-/vaults/" name
@@ -281,14 +284,14 @@
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'Expect "100-continue"
                   'x-amz-glacier-version glacier-version
-                  'x-amz-part-size 1MB
+                  'x-amz-part-size part-size
                   'Content-Length (bytes-length data)
                   'Content-Type "application/octet-stream"
                   'Content-Range (format "bytes ~a-~a/*"
                                          offset
                                          (sub1 (+ offset (bytes-length data))))
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
-                  'x-amz-sha256-tree-hash (tree-hash data)
+                  'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
                   ))
   (call/output-request "1.1"
                        m
@@ -304,7 +307,7 @@
                          (void))))
 
 (define/contract (finish-multipart-upload name upload-id total-size tree-hash)
-  (string? string? exact-nonnegative-integer? string?  . -> . string?)
+  (string? string? exact-nonnegative-integer? sha256? . -> . string?)
   (define m "POST")
   (define u (string-append "http://" host "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
@@ -312,7 +315,7 @@
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   'x-amz-archive-size total-size
-                  'x-amz-sha256-tree-hash tree-hash
+                  'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
                   ))
   (call/output-request "1.1"
                        m
@@ -333,28 +336,43 @@
   (string? string? valid-part-size? bytes? . -> . string?)
   (define id (start-multipart-upload name part-size desc))
   (define len (bytes-length data))
-  (for ([i (in-range 0 len part-size)])
-      (upload-part name id i (subbytes data i (min (+ i part-size) len))))
-  (finish-multipart-upload name id len (tree-hash data)))
+  (define archive-tree-hash
+    (hashes->tree-hash
+      (for/list ([i (in-range 0 len part-size)])
+        (let* ((part (subbytes data i (min (+ i part-size) len)))
+               (part-hash (tree-hash part)))
+          (upload-part name id part-size i part part-hash)
+          part-hash))))
+  (finish-multipart-upload name id len archive-tree-hash))
+
+(define/contract (create-archive-from-port vault port desc #:part-size [part-size 1MB])
+  (string? input-port? string? #:part-size valid-part-size? . -> . string?)
+  (define id (start-multipart-upload vault part-size desc))
+  (let loop ([i 0]
+             [xs '()])
+    (define b (read-bytes part-size port))
+    (cond
+      [(eof-object? b)
+       (finish-multipart-upload vault id i (hashes->tree-hash (reverse xs)))]
+      [else
+        (let ((part-hash (tree-hash b)))
+          (upload-part vault id part-size i b part-hash)
+          (loop (+ i (bytes-length b))
+                (cons part-hash xs)))])))
 
 (define/contract (create-archive-from-file vault path)
   (string? path? . -> . string?)
   (define ps (path->string path))
-  (define len (file-size ps))
-  (with-input-from-file ps
-    (lambda ()
-      (define desc (string-append ps " " (seconds->gmt-8601-string)))
-      (define id (start-multipart-upload vault 1MB desc))
-      (let loop ([i 0]
-                 [xs '()])
-        (define b (read-bytes 1MB))
-        (cond
-         [(eof-object? b)
-          (finish-multipart-upload vault id len (hashes->tree (reverse xs)))]
-         [else
-          (upload-part vault id i b)
-          (loop (+ i 1MB)
-                (cons (sha256 b) xs))])))))
+  (define desc (string-append ps " " (seconds->gmt-8601-string)))
+  (define part-size
+    (max
+      1MB
+      (expt 2 (sub1 (integer-length (ceiling (/ (file-size ps) 10000)))))))
+  (when (> part-size (* 4 1024 1024 1024))
+    (error 'create-archive-from-file "File is too large (maximum 39.06 TiB)"))
+  (call-with-input-file ps
+    (lambda (port)
+      (create-archive-from-port vault port desc #:part-size part-size))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -472,11 +490,10 @@
 (define (verify-file path tree-hash)
   (with-input-from-file path
     (lambda ()
-      (define ok?
-        (equal? (hashes->tree (for/list ([i (in-range 0 (file-size path) 1MB)])
-                                  (sha256 (read-bytes 1MB))))
-                tree-hash))
-      (displayln ok?))))
+      (equal? (bytes->hex-string
+                (hashes->tree-hash (for/list ([i (in-range 0 (file-size path) 1MB)])
+                                     (sha256 (read-bytes 1MB)))))
+              tree-hash))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -492,19 +509,19 @@
   (for/list ([i (in-range 0 total-len 1MB)])
       (sha256 (subbytes b i (min (+ i 1MB) total-len)))))
 
-;; Given a list of hashes make an x-amz-sha256-tree-hash
-(define/contract (hashes->tree xs)
-  ((listof sha256?) . -> . string?)
+;; Given a list of hashes make a tree hash
+(define/contract (hashes->tree-hash xs)
+  ((listof sha256?) . -> . sha256?)
   (match xs
-    [(list x) (bytes->hex-string x)]
-    [else (hashes->tree (for/list ([(a b) (in-take xs 2 (const #f))])
-                          (cond [b (sha256 (bytes-append a b))]
-                                [else a])))]))
+    [(list x) x]
+    [else (hashes->tree-hash (for/list ([(a b) (in-take xs 2 (const #f))])
+                               (cond [b (sha256 (bytes-append a b))]
+                                     [else a])))]))
 
-;; Given bytes? make an x-amz-sha256-tree-hash
+;; Given bytes? make a tree hash
 (define/contract (tree-hash b)
-  (bytes? . -> . string?)
-  (hashes->tree (bytes->hashes b)))
+  (bytes? . -> . sha256?)
+  (hashes->tree-hash (bytes->hashes b)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Examples
@@ -543,7 +560,7 @@
    "glacier"
 
    (check-equal?
-    (tree-hash (make-bytes (* 4 1024 1024)))
+    (bytes->hex-string (tree-hash (make-bytes (* 4 1024 1024))))
     "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
 
    (define vault (test/vault))
@@ -577,6 +594,15 @@
     (lambda ()
       (set! id (create-archive-from-file vault
                                          (build-path 'same "manual.scrbl")))))
+   (check-true (delete-archive vault id))
+
+   (check-not-exn
+    (lambda ()
+      (call-with-input-bytes (make-bytes (* 19 1MB))
+        (lambda (port)
+          (set! id (create-archive-from-port vault port "test 19MB/16MB"
+                                             #:part-size (* 16 1MB)))))))
+
    (check-true (delete-archive vault id))
 
    ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
