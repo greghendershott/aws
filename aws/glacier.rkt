@@ -294,7 +294,8 @@
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
                   'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
                   ))
-  (let loop ((tries 3))
+  (let loop ((tries 12)
+             (delay 1))
     (with-handlers
       ([exn:fail:aws?
          (lambda(e)
@@ -302,8 +303,8 @@
              (begin
                (log-aws-warning (format "upload-part: Retrying in 1 second after error: ~a"
                                         (exn-message e)))
-               (sleep 1)
-               (loop (sub1 tries)))
+               (sleep delay)
+               (loop (sub1 tries) (* 2 delay)))
              (raise e)))])
       (call/output-request "1.1"
                            m
@@ -355,6 +356,10 @@
 (define/contract (upload-ctx-perform ctx . args)
   (->* (threaded-upload-ctx?) #:rest any/c void?)
   (define put-evt (channel-put-evt (threaded-upload-ctx-work-channel ctx) args))
+  (match (channel-try-get (threaded-upload-ctx-exn-channel ctx))
+    [(? exn? e)
+     (raise e)]
+    [else (void)])
   (match (sync put-evt (threaded-upload-ctx-exn-channel ctx))
     [(? (curry eq? put-evt)) (void)]
     [(? exn? e)
