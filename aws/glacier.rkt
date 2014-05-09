@@ -294,18 +294,29 @@
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
                   'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
                   ))
-  (call/output-request "1.1"
-                       m
-                       u
-                       (lambda (out) (display data out))
-                       (bytes-length data)
-                       (dict-set h
-                                 'Authorization
-                                 (aws-v4-authorization m u h data
-                                                       (region) service))
-                       (lambda (p h)
-                         (check-response p h)
-                         (void))))
+  (let loop ((tries 3))
+    (with-handlers
+      ([exn:fail:aws?
+         (lambda(e)
+           (if (> tries 0)
+             (begin
+               (log-aws-warning (format "upload-part: Retrying in 1 second after error: ~a"
+                                        (exn-message e)))
+               (sleep 1)
+               (loop (sub1 tries)))
+             (raise e)))])
+      (call/output-request "1.1"
+                           m
+                           u
+                           (lambda (out) (display data out))
+                           (bytes-length data)
+                           (dict-set h
+                                     'Authorization
+                                     (aws-v4-authorization m u h data
+                                                           (region) service))
+                           (lambda (p h)
+                             (check-response p h)
+                             (void))))))
 
 (struct threaded-upload-ctx (work-channel exn-channel thread-group))
 
