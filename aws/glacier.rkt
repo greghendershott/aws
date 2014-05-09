@@ -297,11 +297,13 @@
   (let loop ((tries 12)
              (delay 1))
     (with-handlers
-      ([exn:fail:aws?
+      ([exn?
          (lambda(e)
            (if (> tries 0)
              (begin
-               (log-aws-warning (format "upload-part: Retrying in 1 second after error: ~a"
+               (log-aws-warning (format "upload-part: Retrying in ~a second~a after error: ~a"
+                                        delay
+                                        (if (= delay 1) "" "s")
                                         (exn-message e)))
                (sleep delay)
                (loop (sub1 tries) (* 2 delay)))
