@@ -66,7 +66,7 @@ prefix, so that `create-topic` is renamed to `sns-create-topic`:
 ## 3. AWS Keys
 
 ```racket
- (require aws/keys)
+ (require aws/keys) package: aws
 ```
 
 ```racket
@@ -114,7 +114,7 @@ Most of the functions do not return a failure value. Instead they raise
 `exn:fail:aws`, which you need to “catch” using `with-handlers`.
 
 ```racket
- (require aws/exn)
+ (require aws/exn) package: aws
 ```
 
 ```racket
@@ -186,7 +186,7 @@ seconds, the connection will be closed automatically.
 ## 6. S3 (Storage)
 
 ```racket
- (require aws/s3)
+ (require aws/s3) package: aws
 ```
 
 [S3](http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html)
@@ -864,7 +864,7 @@ Abort the multipart upload specified by the `upload-id` returned from
 ## 7. SDB (Database)
 
 ```racket
- (require aws/sdb)
+ (require aws/sdb) package: aws
 ```
 
 [SimpleDB](http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html)
@@ -1208,7 +1208,7 @@ before the values we set are available to get.
 ## 8. SES (Email)
 
 ```racket
- (require aws/ses)
+ (require aws/ses) package: aws
 ```
 
 Please refer to the [SES
@@ -1343,7 +1343,7 @@ you may be able to support them by setting the `Action` parameter.
 ## 9. SNS (Notifications)
 
 ```racket
- (require aws/sns)
+ (require aws/sns) package: aws
 ```
 
 [SNS](http://docs.amazonwebservices.com/sns/latest/api/Welcome.html?r=9480)
@@ -1451,7 +1451,7 @@ Publish a notification message to a topic. If `#:json?` is `#t` then
 ## 10. SQS (Queues)
 
 ```racket
- (require aws/sqs)
+ (require aws/sqs) package: aws
 ```
 
 [SQS](http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html)
@@ -1566,7 +1566,7 @@ Change the visibility time of a message already in a queue.
 ## 11. Route 53 (DNS)
 
 ```racket
- (require aws/r53)
+ (require aws/r53) package: aws
 ```
 
 [Route
@@ -1677,7 +1677,7 @@ request")
 ## 12. Dynamo DB
 
 ```racket
- (require aws/dynamo)
+ (require aws/dynamo) package: aws
 ```
 
 [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html)
@@ -1796,7 +1796,7 @@ similarly-named functions.
 ## 13. CloudWatch (Monitoring)
 
 ```racket
- (require aws/cw)
+ (require aws/cw) package: aws
 ```
 
 Among the Amazon Web Services, the
@@ -2078,7 +2078,7 @@ Return the history for alarms meeting the criteria.
 ## 14. Glacier (Archives)
 
 ```racket
- (require aws/glacier)
+ (require aws/glacier) package: aws
 ```
 
 [Glacier](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html)
@@ -2172,6 +2172,15 @@ Get a vault’s notification configuration.
 Delete a vault’s notification configuration.
 
 ### 14.4. Archives
+
+```racket
+(num-threads) -> exact-nonnegative-integer?
+(num-threads v) -> void?                   
+  v : exact-nonnegative-integer?           
+```
+
+Set the number of threads to use for multipart uploads. Defaults to `8`.
+A value of `0` will cause deadlock when an upload is attempted.
 
 ```racket
 (create-archive vault-name                    
@@ -2364,7 +2373,7 @@ This example can be found in `examples/backup.rkt`.
 ## 15. Utilities
 
 ```racket
- (require aws/util)
+ (require aws/util) package: aws
 ```
 
 Although the following are mainly for internal use, they’re `provide`d

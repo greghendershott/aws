@@ -33,6 +33,7 @@
 (define glacier-version "2012-06-01")
 (define region (make-parameter "us-east-1"))
 (define host (string-append service "." (region) ".amazonaws.com"))
+(define num-threads (make-parameter 8))
 
 (define 1MB (* 1024 1024))
 
@@ -273,7 +274,7 @@
 ;; Note: (bytes-length data) must be *exactly* the part-size for every
 ;; part but the last, where it must be <=.
 ;;
-;; Returns #t unless it throws an exception.
+;; Returns void unless it throws an exception.
 (define/contract (upload-part name upload-id part-size offset data tree-hash)
   (string? string? valid-part-size? exact-nonnegative-integer? bytes? sha256? . -> . void)
   (log-aws-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
@@ -293,18 +294,78 @@
                   'x-amz-content-sha256 (bytes->hex-string (sha256 data))
                   'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
                   ))
-  (call/output-request "1.1"
-                       m
-                       u
-                       (lambda (out) (display data out))
-                       (bytes-length data)
-                       (dict-set h
-                                 'Authorization
-                                 (aws-v4-authorization m u h data
-                                                       (region) service))
-                       (lambda (p h)
-                         (check-response p h)
-                         (void))))
+  (let loop ((tries 12)
+             (delay 1))
+    (with-handlers
+      ([exn?
+         (lambda(e)
+           (if (> tries 0)
+             (begin
+               (log-aws-warning (format "upload-part: Retrying in ~a second~a after error: ~a"
+                                        delay
+                                        (if (= delay 1) "" "s")
+                                        (exn-message e)))
+               (sleep delay)
+               (loop (sub1 tries) (* 2 delay)))
+             (raise e)))])
+      (call/output-request "1.1"
+                           m
+                           u
+                           (lambda (out) (display data out))
+                           (bytes-length data)
+                           (dict-set h
+                                     'Authorization
+                                     (aws-v4-authorization m u h data
+                                                           (region) service))
+                           (lambda (p h)
+                             (check-response p h)
+                             (void))))))
+
+(struct threaded-upload-ctx (work-channel exn-channel thread-group))
+
+(define/contract (make-upload-ctx)
+  (-> threaded-upload-ctx?)
+  (define work-channel (make-channel))
+  (define exn-channel  (make-channel))
+  (define (worker)
+    (define mailbox-receive-evt (thread-receive-evt))
+    (let loop ()
+      (match (sync work-channel mailbox-receive-evt)
+        [(? (curry eq? mailbox-receive-evt)) (void)]
+        [(list args ...)
+         (when
+           (with-handlers
+             ([exn? (lambda(e) (channel-put exn-channel e) #f)])
+             (begin
+               (apply upload-part args)
+               #t))
+           (loop))])))
+  (threaded-upload-ctx
+    work-channel
+    exn-channel
+    (for/list ([i (in-range 0 (num-threads))])
+      (thread worker))))
+
+(define/contract (finish-upload-ctx ctx)
+  (-> threaded-upload-ctx? void?)
+  (for ([thread (threaded-upload-ctx-thread-group ctx)])
+    (thread-send thread 'done #f))
+  (for ([thread (threaded-upload-ctx-thread-group ctx)])
+    (match (sync thread (threaded-upload-ctx-exn-channel ctx))
+      [(? exn? e) (raise e)]
+      [else (void)])))
+
+(define/contract (upload-ctx-perform ctx . args)
+  (->* (threaded-upload-ctx?) #:rest any/c void?)
+  (define put-evt (channel-put-evt (threaded-upload-ctx-work-channel ctx) args))
+  (match (channel-try-get (threaded-upload-ctx-exn-channel ctx))
+    [(? exn? e)
+     (raise e)]
+    [else (void)])
+  (match (sync put-evt (threaded-upload-ctx-exn-channel ctx))
+    [(? (curry eq? put-evt)) (void)]
+    [(? exn? e)
+     (raise e)]))
 
 (define/contract (finish-multipart-upload name upload-id total-size tree-hash)
   (string? string? exact-nonnegative-integer? sha256? . -> . string?)
@@ -336,27 +397,31 @@
   (string? string? valid-part-size? bytes? . -> . string?)
   (define id (start-multipart-upload name part-size desc))
   (define len (bytes-length data))
+  (define ctx (make-upload-ctx))
   (define archive-tree-hash
     (hashes->tree-hash
       (for/list ([i (in-range 0 len part-size)])
         (let* ((part (subbytes data i (min (+ i part-size) len)))
                (part-hash (tree-hash part)))
-          (upload-part name id part-size i part part-hash)
+          (upload-ctx-perform ctx name id part-size i part part-hash)
           part-hash))))
+  (finish-upload-ctx ctx)
   (finish-multipart-upload name id len archive-tree-hash))
 
 (define/contract (create-archive-from-port vault port desc #:part-size [part-size 1MB])
   (string? input-port? string? #:part-size valid-part-size? . -> . string?)
   (define id (start-multipart-upload vault part-size desc))
+  (define ctx (make-upload-ctx))
   (let loop ([i 0]
              [xs '()])
     (define b (read-bytes part-size port))
     (cond
       [(eof-object? b)
+       (finish-upload-ctx ctx)
        (finish-multipart-upload vault id i (hashes->tree-hash (reverse xs)))]
       [else
         (let ((part-hash (tree-hash b)))
-          (upload-part vault id part-size i b part-hash)
+          (upload-ctx-perform ctx vault id part-size i b part-hash)
           (loop (+ i (bytes-length b))
                 (cons part-hash xs)))])))
 

@@ -2104,6 +2104,13 @@ Set the region. Defaults to @racket["us-east-1"].
 
 @subsection{Archives}
 
+@defparam[num-threads v exact-nonnegative-integer?]{
+
+Set the number of threads to use for multipart uploads. Defaults to @racket[8].
+A value of @racket[0] will cause deadlock when an upload is attempted.
+
+}
+
 @defproc[(create-archive
 [vault-name string?]
 [archive-description string?]
