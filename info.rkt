@@ -3,7 +3,8 @@
 (define collection 'multi)
 (define deps '("base"
                "http"
-               "sha"))
+               "sha"
+               "rackunit-lib"))
 (define build-deps '("racket-doc"
                      "rackunit-lib"
                      "scribble-lib"))
