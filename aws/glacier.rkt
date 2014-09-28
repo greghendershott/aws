@@ -1,15 +1,13 @@
 #lang racket
 
 (require http
-         sha
          json
          net/head
+         sha
          "exn.rkt"
-         "keys.rkt"
-         "util.rkt"
          "sigv4.rkt"
          "take.rkt"
-         )
+         "util.rkt")
 
 (provide region
          create-vault
@@ -26,13 +24,12 @@
          retrieve-archive
          list-jobs
          get-job-output
-         get-job-output-to-file
-         )
+         get-job-output-to-file)
 
 (define service "glacier")
 (define glacier-version "2012-06-01")
 (define region (make-parameter "us-east-1"))
-(define host (string-append service "." (region) ".amazonaws.com"))
+(define (host) (string-append service "." (region) ".amazonaws.com"))
 (define num-threads (make-parameter 8))
 
 (define 1MB (* 1024 1024))
@@ -40,8 +37,8 @@
 (define/contract (create-vault name)
   (string? . -> . (or/c #t exn:fail:aws?))
   (define m "PUT")
-  (define u (string-append "http://" host "/-/vaults/" name))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -61,8 +58,8 @@
 (define/contract (delete-vault name)
   (string? . -> . (or/c #t exn:fail:aws?))
   (define m "DELETE")
-  (define u (string-append "http://" host "/-/vaults/" name))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -82,8 +79,8 @@
 ;; TO-DO: Return a list of structs instead of hasheq?
 (define (list-vaults)
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/"))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/"))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -101,8 +98,8 @@
 (define/contract (describe-vault name)
   (string? . -> . jsexpr?)
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/" name))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -125,9 +122,9 @@
     (error 'set-vault-notifications
            "One of inventory? or archive? must be #t"))
   (define m "PUT")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -151,9 +148,9 @@
 (define/contract (get-vault-notifications name)
   (string? . -> . jsexpr?)
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -171,9 +168,9 @@
 (define/contract (delete-vault-notifications name)
   (string? . -> . void)
   (define m "DELETE")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -194,8 +191,8 @@
 (define/contract (create-archive name desc data)
   (string? string? bytes?  . -> . string?)
   (define m "POST")
-  (define u (string-append "http://" host "/-/vaults/" name "/archives"))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name "/archives"))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'Expect "100-continue"
                   'Content-Length (bytes-length data)
@@ -221,9 +218,9 @@
 (define/contract (delete-archive vault archive-id)
   (string? string? . -> . (or/c #t exn:fail:aws?))
   (define m "DELETE")
-  (define u (string-append "http://" host "/-/vaults/" vault
+  (define u (string-append "http://" (host) "/-/vaults/" vault
                            "/archives/" archive-id))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -248,9 +245,9 @@
 (define/contract (start-multipart-upload name part-size desc)
   (string? valid-part-size? string?  . -> . string?)
   (define m "POST")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   'x-amz-part-size part-size
@@ -279,9 +276,9 @@
   (string? string? valid-part-size? exact-nonnegative-integer? bytes? sha256? . -> . void)
   (log-aws-debug (format "upload-part ~a-~a" offset (+ offset (bytes-length data))))
   (define m "PUT")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'Expect "100-continue"
                   'x-amz-glacier-version glacier-version
@@ -370,9 +367,9 @@
 (define/contract (finish-multipart-upload name upload-id total-size tree-hash)
   (string? string? exact-nonnegative-integer? sha256? . -> . string?)
   (define m "POST")
-  (define u (string-append "http://" host "/-/vaults/" name
+  (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   'x-amz-archive-size total-size
@@ -461,8 +458,8 @@
   (string? list? . -> . string?)
   (define data (jsexpr->bytes (apply hasheq xs)))
   (define m "POST")
-  (define u (string-append "http://" host "/-/vaults/" name "/jobs"))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name "/jobs"))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'Content-Length (bytes-length data)
                   'x-amz-glacier-version glacier-version
@@ -484,8 +481,8 @@
 ;; TO-DO: Support > 1,000 by using `marker' query param
 (define (list-jobs name)
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/" name "/jobs"))
-  (define h (hash 'Host host
+  (define u (string-append "http://" (host) "/-/vaults/" name "/jobs"))
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -503,9 +500,9 @@
 (define/contract (get-job-output name job)
   (string? string? . -> . (or/c jsexpr? bytes?))
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/" name "/jobs/" job
+  (define u (string-append "http://" (host) "/-/vaults/" name "/jobs/" job
                            "/output"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -527,9 +524,9 @@
                                'truncate/replace)
            . -> . boolean?)
   (define m "GET")
-  (define u (string-append "http://" host "/-/vaults/" name "/jobs/" job
+  (define u (string-append "http://" (host) "/-/vaults/" name "/jobs/" job
                            "/output"))
-  (define h (hash 'Host host
+  (define h (hash 'Host (host)
                   'Date (seconds->gmt-8601-string 'basic (current-seconds))
                   'x-amz-glacier-version glacier-version
                   ))
@@ -620,65 +617,74 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require rackunit "tests/data.rkt" "sns.rkt")
-  (test-case
-   "glacier"
+  (require rackunit
+           "sns.rkt"
+           "tests/data.rkt")
 
-   (check-equal?
-    (bytes->hex-string (tree-hash (make-bytes (* 4 1024 1024))))
-    "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
+  (define (go)
+    (check-equal?
+     (bytes->hex-string (tree-hash (make-bytes (* 4 1024 1024))))
+     "27b557ba335a688f779a95e258a886ffa3b39b13533d6f9dcaa0497a2ed1fe18")
 
-   (define vault (test/vault))
+    (define vault (test/vault))
 
-   (define topic-arn (create-topic (test/topic)))
+    (define topic-arn (create-topic (test/topic)))
 
-   (check-true (create-vault vault))
-   (check-true (for/or ([x (in-list (list-vaults))])
-                 (define name (hash-ref x 'VaultName #f))
-                 (and name (string=? name vault))))
+    (check-true (create-vault vault))
+    (check-true (for/or ([x (in-list (list-vaults))])
+                  (define name (hash-ref x 'VaultName #f))
+                  (and name (string=? name vault))))
 
-   (define id #f)
+    (define id #f)
 
-   (check-not-exn
-    (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
-   (check-true (delete-archive vault id))
+    (check-not-exn
+     (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
+    (check-true (delete-archive vault id))
 
-   (check-not-exn
-    (lambda ()
-      (set! id (create-archive vault "description"
-                               (make-bytes (+ 3 (* 4 1MB)))))))
-   (check-true (delete-archive vault id))
+    (check-not-exn
+     (lambda ()
+       (set! id (create-archive vault "description"
+                                (make-bytes (+ 3 (* 4 1MB)))))))
+    (check-true (delete-archive vault id))
 
-   (check-not-exn
-    (lambda ()
-      (set! id (create-archive/multipart-upload vault "description" 1MB
-                                                (make-bytes (+ 3 (* 4 1MB)))))))
-   (check-true (delete-archive vault id))
+    (check-not-exn
+     (lambda ()
+       (set! id (create-archive/multipart-upload vault "description" 1MB
+                                                 (make-bytes (+ 3 (* 4 1MB)))))))
+    (check-true (delete-archive vault id))
 
-   (check-not-exn
-    (lambda ()
-      (set! id (create-archive-from-file vault
-                                         (build-path 'same "manual.scrbl")))))
-   (check-true (delete-archive vault id))
+    (check-not-exn
+     (lambda ()
+       (set! id (create-archive-from-file vault
+                                          (build-path 'same "manual.scrbl")))))
+    (check-true (delete-archive vault id))
 
-   (check-not-exn
-    (lambda ()
-      (call-with-input-bytes (make-bytes (* 19 1MB))
-        (lambda (port)
-          (set! id (create-archive-from-port vault port "test 19MB/16MB"
-                                             #:part-size (* 16 1MB)))))))
+    (check-not-exn
+     (lambda ()
+       (call-with-input-bytes (make-bytes (* 19 1MB))
+                              (lambda (port)
+                                (set! id (create-archive-from-port vault port "test 19MB/16MB"
+                                                                   #:part-size (* 16 1MB)))))))
 
-   (check-true (delete-archive vault id))
+    (check-true (delete-archive vault id))
 
-   ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
-   ;; complete, so it's impractical for our unit test to check the SNS
-   ;; topic. Furthermore, retrieve-inventory may fail during the first 24
-   ;; hours after a vault is created, because Amazon Glacier hasn't
-   ;; created an initial inventory yet. Gah.
+    ;; Unfortunately the retrieve-XXX operations take 3-5 hours to
+    ;; complete, so it's impractical for our unit test to check the SNS
+    ;; topic. Furthermore, retrieve-inventory may fail during the first 24
+    ;; hours after a vault is created, because Amazon Glacier hasn't
+    ;; created an initial inventory yet. Gah.
 
-   ;; (define job-id (retrieve-inventory vault "" topic-arn))
-   ;; (list-jobs)
+    ;; (define job-id (retrieve-inventory vault "" topic-arn))
+    ;; (list-jobs)
 
-   (check-not-exn
-    (lambda () (set-vault-notifications vault topic-arn #t #t)))
-   ))
+    (check-not-exn
+     (lambda () (set-vault-notifications vault topic-arn #t #t))))
+  
+  ;; Test a few regions. Note that when using SNS with Glacier, the
+  ;; regions and endpoits must match, so be sure to set sns-endpoint,
+  ;; too.
+  (for ([r '("us-east-1" "us-west-1" "eu-west-1")])
+    (parameterize
+        ([region r]
+         [sns-endpoint (endpoint (format "sns.~a.amazonaws.com" r) #f)])
+      (go))))
