@@ -29,7 +29,9 @@ Web Services](http://aws.amazon.com/documentation/):
 Documentation
 =============
 
-[Reference documentation](https://github.com/greghendershott/aws/blob/master/aws/manual.md).
+* [HTML format on pkg-build.racket-lang.org](http://pkg-build.racket-lang.org/doc/aws/index.html).
+
+* [Markdown format on GitHub](https://github.com/greghendershott/aws/blob/master/aws/manual.md).
 
 Requirements
 ============
