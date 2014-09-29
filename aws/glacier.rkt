@@ -406,7 +406,7 @@
   (finish-multipart-upload name id len archive-tree-hash))
 
 (define/contract (create-archive-from-port vault port desc #:part-size [part-size 1MB])
-  (string? input-port? string? #:part-size valid-part-size? . -> . string?)
+  ((string? input-port? string?) (#:part-size valid-part-size?) . ->* . string?)
   (define id (start-multipart-upload vault part-size desc))
   (define ctx (make-upload-ctx))
   (let loop ([i 0]
