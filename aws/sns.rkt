@@ -141,7 +141,7 @@
                                   #:subject [subject "No subject"]
                                   #:json? [json? #f])
   ((string? string?)
-   (#:subject (or/c #f string?) #:json? boolean?)
+   (#:subject string? #:json? boolean?)
    . ->* . any)
   (sns (append `((Action "Publish")
                  (Message ,msg)

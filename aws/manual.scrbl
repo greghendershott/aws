@@ -1456,8 +1456,8 @@ Delete a subscription.
 @defproc[(publish
 [topic-arn string?]
 [message string?]
-[#:subject subject ""]
-[#:json? json? #f]
+[#:subject subject string? "No subject"]
+[#:json? json? boolean? #f]
 ) void?]{
 
 Publish a notification message to a topic. If @racket[#:json?] is @racket[#t]

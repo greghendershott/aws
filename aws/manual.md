@@ -1435,14 +1435,14 @@ Subscribe to a topic, returning the ARN for the subscription.
 Delete a subscription.
 
 ```racket
-(publish topic-arn                 
-         message                   
-         #:subject subject         
-         #:json? json?)    -> void?
-  topic-arn : string?              
-  message : string?                
-  subject : ""                     
-  json? : #f                       
+(publish  topic-arn                 
+          message                   
+         [#:subject subject         
+          #:json? json?])   -> void?
+  topic-arn : string?               
+  message : string?                 
+  subject : string? = "No subject"  
+  json? : boolean? = #f             
 ```
 
 Publish a notification message to a topic. If `#:json?` is `#t` then
