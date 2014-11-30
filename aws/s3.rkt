@@ -10,8 +10,7 @@
          "util.rkt"
          "exn.rkt"
          "keys.rkt"
-         "pool.rkt"
-         )
+         "pool.rkt")
 
 (provide (contract-out [s3-scheme parameter/c]
                        [s3-host parameter/c]
@@ -686,7 +685,9 @@
 ;; test
 
 (module+ test
-  (require rackunit net/url "tests/data.rkt")
+  (require rackunit
+           net/url
+           "tests/data.rkt")
   (test-case
    "valid-bucket-name?"
    (check-true (valid-bucket-name? "Aa1.-" #f))
@@ -881,49 +882,48 @@
     (delete b+p/copy)
     (delete b+p)
     (delete-bucket bucket)
-    (void))
+   (void))
 
-  (for ([pool '(0 10)])
-    (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
-    (parameterize ([current-pool-timeout pool])
-      (parameterize ([s3-path-requests? #f])
-        (parameterize ([s3-host "s3.amazonaws.com"])
-          (test-bucket-ops #f) ;us-standard
-          (test-bucket-ops "eu-west-1"))
-        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-          (test-bucket-ops "eu-west-1")))
-      (parameterize ([s3-path-requests? #t])
-        (parameterize ([s3-host "s3.amazonaws.com"])
-          (test-bucket-ops #f)) ;us-standard
-        (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-          (test-bucket-ops "eu-west-1")))))
+  (when (test-data-exists?)
+    (for ([pool '(0 10)])
+      (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
+      (parameterize ([current-pool-timeout pool])
+        (parameterize ([s3-path-requests? #f])
+          (parameterize ([s3-host "s3.amazonaws.com"])
+            (test-bucket-ops #f) ;us-standard
+            (test-bucket-ops "eu-west-1"))
+          (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+            (test-bucket-ops "eu-west-1")))
+        (parameterize ([s3-path-requests? #t])
+          (parameterize ([s3-host "s3.amazonaws.com"])
+            (test-bucket-ops #f)) ;us-standard
+          (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
+            (test-bucket-ops "eu-west-1")))))
 
-  ;; ------------------------------------------------------------
-
-  (test-case
-   "100-continue"
-   ;; Confirm that the http collection's handling of 100-continue is
-   ;; working as expected with S3.
-   ;;
-   ;; Make a PUT request with a Content-Length vastly bigger than S3
-   ;; will accept. Check that S3 responds as expected with "400 Bad
-   ;; Request". Then check that our `writer' proc was NOT
-   ;; called. (Don't worry, if it is called, we don't actually write
-   ;; anything at all; definitely not the huge number of bytes.)
-   (ensure-have-keys)
-   (create-bucket (test/bucket))
-   (define writer-called? #f)
-   (check-exn
-    exn:fail:aws?
-    (lambda ()
-      (put (string-append (test/bucket) "/" (test/path))
-           (lambda (out)
-             ;; Set flag that we were asked to write something.
-             ;; (But for this test, don't actually write anything.)
-             (set! writer-called? #t))
-           ;; Content-Length that should elicit 400 error
-           (expt 2 64) ;16,384 petabytes might be too large
-           "text/plain")))
-   (check-false writer-called?)
-   (delete-bucket (test/bucket))
-   (void)))
+    (test-case
+     "100-continue"
+     ;; Confirm that the http collection's handling of 100-continue is
+     ;; working as expected with S3.
+     ;;
+     ;; Make a PUT request with a Content-Length vastly bigger than S3
+     ;; will accept. Check that S3 responds as expected with "400 Bad
+     ;; Request". Then check that our `writer' proc was NOT
+     ;; called. (Don't worry, if it is called, we don't actually write
+     ;; anything at all; definitely not the huge number of bytes.)
+     (ensure-have-keys)
+     (create-bucket (test/bucket))
+     (define writer-called? #f)
+     (check-exn
+      exn:fail:aws?
+      (lambda ()
+        (put (string-append (test/bucket) "/" (test/path))
+             (lambda (out)
+               ;; Set flag that we were asked to write something.
+               ;; (But for this test, don't actually write anything.)
+               (set! writer-called? #t))
+             ;; Content-Length that should elicit 400 error
+             (expt 2 64) ;16,384 petabytes might be too large
+             "text/plain")))
+     (check-false writer-called?)
+     (delete-bucket (test/bucket))
+     (void))))

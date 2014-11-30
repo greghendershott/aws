@@ -1,0 +1,23 @@
+language: c
+
+env:
+  - RACKET_VERSION=6.0
+  - RACKET_VERSION=6.0.1
+  - RACKET_VERSION=6.1
+  - RACKET_VERSION=6.1.1
+  - RACKET_VERSION=HEAD
+
+before_install:
+  - git clone https://github.com/greghendershott/travis-racket.git
+  - cat travis-racket/install-racket.sh | bash # pipe to bash not sh!
+  - export PATH=/usr/racket/bin:$PATH
+
+install:
+
+before_script:
+
+script:
+  - raco pkg install --deps search-auto --link aws
+  - raco test -x -p aws
+
+after_script:

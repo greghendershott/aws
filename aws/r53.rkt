@@ -6,8 +6,7 @@
          http/head
          "keys.rkt"
          "exn.rkt"
-         "util.rkt"
-         )
+         "util.rkt")
 
 (provide r53-endpoint
          create-hosted-zone
@@ -16,8 +15,7 @@
          domain-name->zone-id
          get-hosted-zone
          list-resource-record-sets
-         change-resource-record-sets
-         )
+         change-resource-record-sets)
 
 (define r53-endpoint (make-parameter (endpoint "route53.amazonaws.com" #t)))
 
@@ -178,46 +176,47 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
-  (require rackunit "tests/data.rkt")
-  (test-case
-   "Route53 create/delete hosted zone"
-   (ensure-have-keys)
-   (define x (create-hosted-zone (test/domain.com)
-                                 (format "unique-~a" (current-seconds))
-                                 "some comment"))
-   (check-true (xexpr? x))
-   (define zid (first-tag-value x 'Id))
-   (check-true (string? zid))
-   (delete-hosted-zone zid)
-   (void))
-  (test-case
-   "Route53 read-only record sets"
-   (ensure-have-keys)
-   (define zs (list-hosted-zones))
-   (define zid (first-tag-value zs 'Id)) ;just grab first one
-   (define name (first-tag-value zs 'Name)) ;just grab first
-   (check-true (match (get-hosted-zone zid)
-                 [`(GetHostedZoneResponse
-                    ((xmlns "https://route53.amazonaws.com/doc/2012-02-29/"))
-                    (HostedZone ()
-                                (Id () ,zid)
-                                ,_ ...)
-                    ,_ ...)
-                  #t]
-                 [_ #f]))
+  (require rackunit
+           "tests/data.rkt")
+  (when (test-data-exists?)
+    (test-case
+     "Route53 create/delete hosted zone"
+     (ensure-have-keys)
+     (define x (create-hosted-zone (test/domain.com)
+                                   (format "unique-~a" (current-seconds))
+                                   "some comment"))
+     (check-true (xexpr? x))
+     (define zid (first-tag-value x 'Id))
+     (check-true (string? zid))
+     (delete-hosted-zone zid)
+     (void))
+    (test-case
+     "Route53 read-only record sets"
+     (ensure-have-keys)
+     (define zs (list-hosted-zones))
+     (define zid (first-tag-value zs 'Id)) ;just grab first one
+     (define name (first-tag-value zs 'Name)) ;just grab first
+     (check-true (match (get-hosted-zone zid)
+                   [`(GetHostedZoneResponse
+                      ((xmlns "https://route53.amazonaws.com/doc/2012-02-29/"))
+                      (HostedZone ()
+                                  (Id () ,zid)
+                                  ,_ ...)
+                      ,_ ...)
+                    #t]
+                   [_ #f]))
 
-   (check-true (match (list-resource-record-sets zid
-                                                 #:name name
-                                                 #:max-items 1)
-                 [`((ResourceRecordSet ()
-                                       (Name () ,name)
-                                       ,_ ...))
-                  #t]
-                 [_ #f]))
+     (check-true (match (list-resource-record-sets zid
+                                                   #:name name
+                                                   #:max-items 1)
+                   [`((ResourceRecordSet ()
+                                         (Name () ,name)
+                                         ,_ ...))
+                    #t]
+                   [_ #f]))
 
-   (check-equal? (list-resource-record-sets zid
-                                            ;; Unlikely domain:
-                                            #:name "zzzzzzzzzzzz.com."
-                                            #:max-items 100)
-                 '())
-   ))
+     (check-equal? (list-resource-record-sets zid
+                                              ;; Unlikely domain:
+                                              #:name "zzzzzzzzzzzz.com."
+                                              #:max-items 100)
+                   '()))))

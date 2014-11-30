@@ -1,4 +1,10 @@
-#lang racket
+#lang racket/base
+
+(require (for-syntax racket/base)
+         racket/file
+         racket/match)
+
+(provide test-data-exists?)
 
 ;; Load personally identifying data required by tests from a file so
 ;; that it's not part of the repo and so that users may customize.
@@ -13,6 +19,9 @@
 
 (define data-file (build-path (find-system-path 'home-dir)
                               ".aws-tests-data"))
+
+(define (test-data-exists?)
+  (file-exists? data-file))
 
 (define-syntax (def/prov stx)
   (syntax-case stx ()
@@ -102,7 +111,7 @@
 (def/prov test/vault)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; used by dyamo.rkt
+;; used by dynamo.rkt
 
 (def/prov test/dynamo-table)
 
