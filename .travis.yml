@@ -17,6 +17,7 @@ install:
 before_script:
 
 script:
+  - cd ..   # Travis did a cd into the dir, cd back up
   - raco pkg install --deps search-auto --link aws
   - raco test -x -p aws
 
