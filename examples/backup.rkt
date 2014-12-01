@@ -56,6 +56,8 @@
     (publish sns-topic (format "Archive completed ~a." (seconds->gmt-string))))
   (void))
 
+#|
+
 ;; For example let's archive the file in our tests dir.
 (define root-dir
   (path->string (simplify-path (path->complete-path (build-path 'up "tests")))))
@@ -66,3 +68,5 @@
 ;; Let's look at the information from SDB
 (select-hash (format "SELECT * FROM ~a" path->archive-domain))
 (select-hash (format "SELECT * FROM ~a" archive->meta-domain))
+
+|#
