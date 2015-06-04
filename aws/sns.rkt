@@ -74,11 +74,11 @@
        (lambda (x)
          (for/list ([x (in-list (tags x 'entry))])
              (match x
-               [(list 'entry '() junk ...
+               [(list 'entry '() _ ...
                       (list 'key '() key)
-                      junk ...
+                      _ ...
                       (list 'value '() val ...)
-                      junk ...)
+                      _ ...)
                 (cons (string->symbol key) (string-join val ""))]
                [else (cons 'bad "val")])))))
 
