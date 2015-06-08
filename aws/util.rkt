@@ -131,18 +131,16 @@
 (define (percent-encode c)
   (string-upcase (format "%~x" (char->integer c))))
 
-(define (char->pair c)
-  (cons c (percent-encode c)))
-
 ;; The extra chars that uri-encode misses but 3986 wants
 (define chars-to-encode (list #\! #\'#\(#\) #\*))
-(define h (for/hash ([c (in-list chars-to-encode)])
-              (values c (percent-encode c))))
 
 (define/provide (uri-encode/rfc-3986 s)
-  (for/fold ([accum ""])
-      ([c (in-string (uri-encode s))])
-    (string-append accum (hash-ref h c (make-string 1 c)))))
+  (call-with-output-string
+    (lambda (out)
+      (for ([c (in-string (uri-encode s))])
+        (if (member c chars-to-encode)
+            (write-string (percent-encode c) out)
+            (write-char c out))))))
 
 ;; Like Racket alist->form-urlencoded, but:
 ;; 1. Works on any dict? (not just an association list of cons pairs).
