@@ -6,61 +6,61 @@
          "util.rkt"
          "keys.rkt"
          "exn.rkt"
-         "post.rkt")
+         "post.rkt"
+         "sigv4.rkt")
 
-(define sns-endpoint (make-parameter
-                      (endpoint "sns.us-east-1.amazonaws.com" #f)))
-(provide sns-endpoint)
+(provide sns-endpoint
+         sns-region)
+
+(define sns-endpoint
+  (make-parameter (endpoint "sns.us-east-1.amazonaws.com" #f)))
+(define sns-region
+  (make-parameter "us-east-1"))
 
 (define/contract/provide (sns params [result-proc values])
-  (((listof (list/c symbol? string?)))
-   ((xexpr? . -> . list?)) . ->* .
-   list?)
+  (((listof (list/c symbol? string?))) ((xexpr? . -> . list?)) . ->* . list?)
   (ensure-have-keys)
-  (define common-params
-    `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA256")
-      (SignatureVersion "2")
-      (Timestamp ,(timestamp))
-      (Version "2010-03-31")))
-  (define all-params (sort (append params common-params)
-                           (lambda (a b)
-                             (string<? (symbol->string (car a))
-                                       (symbol->string (car b))))))
-  (define str-to-sign
-    (string-append "GET" "\n"
-                   (endpoint->host:port (sns-endpoint)) "\n"
-                   "/" "\n"
-                   (dict->form-urlencoded all-params)))
-  (define signature (sha256-encode str-to-sign))
-  (define signed-params (append all-params `((Signature ,signature))))
-  (define qp (dict->form-urlencoded signed-params))
-  (define uri (endpoint->uri (sns-endpoint) (string-append "/?" qp)))
-  (define x
+  (define qp-text (dict->form-urlencoded (sort params param<?)))
+  (define uri (endpoint->uri (sns-endpoint) (string-append "/?" qp-text)))
+  (define heads (hasheq 'Host (endpoint-host (sns-endpoint))
+                        'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                        'Content-Type "application/xml"))
+  (define auth-heads (dict-set* heads
+                                'Authorization
+                                (aws-v4-authorization "GET"
+                                                      uri
+                                                      heads
+                                                      #""
+                                                      (sns-region)
+                                                      "sns")))
+  (define result
     (call/input-request
-     "1.1" "GET" uri '()
-     (lambda (in h)
+     "1.1" "GET" uri auth-heads
+     (λ (in h)
        (define e (read-entity/xexpr in h))
-       (match (extract-http-code h)
+      (match (extract-http-code h)
          [200 e]
-         [else (raise (header&response->exn:fail:aws
-                       h e (current-continuation-marks)))]))))
-  (append (result-proc x)
+         [_   (raise (header&response->exn:fail:aws
+                      h e (current-continuation-marks)))]))))
+  (append (result-proc result)
           ;; If a NextToken element in the response XML, we need to
           ;; call again to get more values.
-          (match (tags x 'NextToken)
-            [(list `(NextToken () ,token))
-             (sns (set-next-token params token)
-                  result-proc)]
-             [else '()])))
+          (match (tags result 'NextToken)
+            [(list `(NextToken () ,token)) (sns (set-next-token params token)
+                                                result-proc)]
+            [_                             '()])))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (param<? a b)
+  (string<? (symbol->string (car a))
+            (symbol->string (car b))))
 
 (define/contract/provide (create-topic name)
   (string? . -> . string?)
-  (first (sns `((Action "CreateTopic")
+  (match (sns `((Action "CreateTopic")
                 (Name ,name))
-              (lambda (x) (map third (tags x 'TopicArn))))))
+              (λ (x) (map third (tags x 'TopicArn))))
+    [(cons arn _) arn]
+    [_            (error 'create-topic "Unexpected response")]))
 
 (define/contract/provide (delete-topic arn)
   (string? . -> . any)
@@ -71,7 +71,7 @@
   (string? . -> . (listof (cons/c symbol? string?)))
   (sns `((Action "GetTopicAttributes")
          (TopicArn ,arn))
-       (lambda (x)
+       (λ (x)
          (for/list ([x (in-list (tags x 'entry))])
              (match x
                [(list 'entry '() _ ...
@@ -80,12 +80,12 @@
                       (list 'value '() val ...)
                       _ ...)
                 (cons (string->symbol key) (string-join val ""))]
-               [else (cons 'bad "val")])))))
+               [_ (cons 'bad "val")])))))
 
 (define/contract/provide (list-topics)
   (-> (listof string?))
   (sns `((Action "ListTopics"))
-       (lambda (x) (map third (tags x 'TopicArn)))))
+       (λ (x) (map third (tags x 'TopicArn)))))
 
 (struct subscription (owner topic-arn subscription-arn protocol endpoint)
         #:transparent)
@@ -120,16 +120,18 @@
          "sqs"        ;delivery of JSON-encoded message to an Amazon SQS queue
          )
      #t]
-    [else #f]))
-    
+    [_ #f]))
+
 (define/contract/provide (subscribe endpoint protocol topic-arn)
   (string? sns-protocol? string? . -> . string?)
-  (first (sns `((Action "Subscribe")
+  (match (sns `((Action "Subscribe")
                 (Endpoint ,endpoint)
                 (Protocol ,protocol)
                 (TopicArn ,topic-arn))
-              (lambda (x)
-                (list (first-tag-value x 'SubscriptionArn))))))
+              (λ (x)
+                (list (first-tag-value x 'SubscriptionArn))))
+    [(cons arn _) arn]
+    [_            (error 'create-topic "Unexpected response")]))
 
 (define/contract/provide (unsubscribe subscription-arn)
   (string? . -> . any)
@@ -159,20 +161,27 @@
   (when (test-data-exists?)
     (define (member? x xs)
       (not (not (member x xs))))
-    (test-case
-     "sns"
-     (read-keys)
-     (define arn (create-topic (test/topic)))
-     (check-true (member? arn (list-topics)))
-     (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
-                   (cons 'TopicArn arn))
-     (check-equal? (subscribe (test/recipient) "email" arn)
-                   "pending confirmation")
-     (publish arn "Test" #:subject "Test")
-     (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
-     (delete-topic arn)
-     (check-false (member? arn (list-topics)))
-     (void))))
+    (define (do-test)
+      (define arn (create-topic (test/topic)))
+      (check-true (member? arn (list-topics)))
+      (check-equal? (assoc 'TopicArn (get-topic-attributes arn))
+                    (cons 'TopicArn arn))
+      (check-equal? (subscribe (test/recipient) "email" arn)
+                    "pending confirmation")
+      (publish arn "Test" #:subject "Test")
+      (publish arn "{\"default\": \"Test\"}" #:subject "Test" #:json? #t)
+      (delete-topic arn)
+      (check-false (member? arn (list-topics))))
+    (read-keys)
+    ;; Test a couple regions, especially eu-central-1 (Frankfurt)
+    ;; which supports only v4 authentication.
+    (for ([region '("us-east-1" "eu-central-1")])
+      (parameterize ([sns-region region]
+                     [sns-endpoint (endpoint (string-append "sns."
+                                                            region
+                                                            ".amazonaws.com")
+                                             #f)])
+        (do-test)))))
 
 ;; Unfortunately it will be hard to write tests for most other SNS
 ;; functionality because they require a subscription to be confirmed
