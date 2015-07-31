@@ -1,13 +1,13 @@
 #lang racket
 
-(require xml
+(require http/head
          http/request
-         http/head
-         "util.rkt"
-         "keys.rkt"
+         xml
          "exn.rkt"
+         "keys.rkt"
          "post.rkt"
-         "sigv4.rkt")
+         "sigv4.rkt"
+         "util.rkt")
 
 (provide sns-endpoint
          sns-region)
@@ -20,39 +20,34 @@
 (define/contract/provide (sns params [result-proc values])
   (((listof (list/c symbol? string?))) ((xexpr? . -> . list?)) . ->* . list?)
   (ensure-have-keys)
-  (define qp-text (dict->form-urlencoded (sort params param<?)))
-  (define uri (endpoint->uri (sns-endpoint) (string-append "/?" qp-text)))
-  (define heads (hasheq 'Host (endpoint-host (sns-endpoint))
+  (let* ([qp-text (dict->form-urlencoded (sort params param<?))]
+         [uri (endpoint->uri (sns-endpoint) (string-append "/?" qp-text))]
+         [heads (hasheq 'Host (endpoint-host (sns-endpoint))
                         'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                        'Content-Type "application/xml"))
-  (define auth-heads (dict-set* heads
-                                'Authorization
-                                (aws-v4-authorization "GET"
-                                                      uri
-                                                      heads
-                                                      #""
-                                                      (sns-region)
-                                                      "sns")))
-  (define result
-    (call/input-request
-     "1.1" "GET" uri auth-heads
-     (λ (in h)
-       (define e (read-entity/xexpr in h))
-      (match (extract-http-code h)
-         [200 e]
-         [_   (raise (header&response->exn:fail:aws
-                      h e (current-continuation-marks)))]))))
-  (append (result-proc result)
-          ;; If a NextToken element in the response XML, we need to
-          ;; call again to get more values.
-          (match (tags result 'NextToken)
-            [(list `(NextToken () ,token)) (sns (set-next-token params token)
-                                                result-proc)]
-            [_                             '()])))
-
-(define (param<? a b)
-  (string<? (symbol->string (car a))
-            (symbol->string (car b))))
+                        'Content-Type "application/xml")]
+         [heads (dict-set* heads
+                           'Authorization
+                           (aws-v4-authorization "GET"
+                                                 uri
+                                                 heads
+                                                 #""
+                                                 (sns-region)
+                                                 "sns"))]
+         [result (call/input-request
+                  "1.1" "GET" uri heads
+                  (λ (in h)
+                    (define e (read-entity/xexpr in h))
+                    (match (extract-http-code h)
+                      [200 e]
+                      [_   (raise (header&response->exn:fail:aws
+                                   h e (current-continuation-marks)))])))])
+    (append (result-proc result)
+            ;; If a NextToken element in the response XML, we need to
+            ;; call again to get more values.
+            (match (tags result 'NextToken)
+              [(list `(NextToken () ,token)) (sns (set-next-token params token)
+                                                  result-proc)]
+              [_                             '()]))))
 
 (define/contract/provide (create-topic name)
   (string? . -> . string?)

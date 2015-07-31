@@ -212,3 +212,15 @@
          log-aws-warning
          log-aws-info
          log-aws-debug)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define/contract/provide (param<? a b)
+  (-> (list/c symbol? string?) (list/c symbol? string?) boolean?)
+  (string<? (symbol->string (car a))
+            (symbol->string (car b))))
+
+(module+ test
+  (check-true  (param<? '(a "a") '(b "b")))
+  (check-false (param<? '(b "b") '(a "a")))
+  (check-false (param<? '(a "a") '(a "a"))))
