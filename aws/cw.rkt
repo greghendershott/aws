@@ -1,17 +1,19 @@
 #lang racket
 
-(require xml
-         http/request
-         "util.rkt"
+(require http/request
+         xml
          "keys.rkt"
-         "exn.rkt"
-         "post.rkt")
+         "post.rkt"
+         "sigv4.rkt"
+         "util.rkt")
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(provide cw-endpoint
+         cw-region)
 
-(define cw-endpoint (make-parameter
-                     (endpoint "monitoring.us-east-1.amazonaws.com" #t)))
-(provide cw-endpoint)
+(define cw-endpoint
+ (make-parameter (endpoint "monitoring.us-east-1.amazonaws.com" #t)))
+(define cw-region
+ (make-parameter "us-east-1.amazonaws.com"))
 
 ;; core procedure to make CloudWatch requests
 (define/contract (cw params [result-proc values])
@@ -19,36 +21,29 @@
    ((xexpr? . -> . list?))
    . ->* . list?)
   (ensure-have-keys)
-  (define common-params
-    `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA256")
-      (SignatureVersion "2")
-      (Timestamp ,(timestamp))
-      (Version "2010-08-01")))
-  (define all-params (sort (append params common-params)
-                           (lambda (a b)
-                             (string<? (symbol->string (car a))
-                                       (symbol->string (car b))))))
-  (define str-to-sign
-    (string-append "POST" "\n"
-                   (endpoint->host:port (cw-endpoint)) "\n"
-                   "/" "\n"
-                   (dict->form-urlencoded all-params)))
-  (define signature (sha256-encode str-to-sign))
-  (define signed-params (append all-params `((Signature ,signature))))
-  (log-aws-debug (format "~a" signed-params))
-  (define head
-    `([Content-Type "application/x-www-form-urlencoded; charset=utf-8"]))
-  (define uri (endpoint->uri (cw-endpoint) "/"))
-  (define x (post-with-retry uri signed-params head))
-  (append (result-proc x)
-          ;; If AWS returned a NextToken element in the response XML, we
-          ;; need to call again to get more values.
-          (match (tags x 'NextToken)
-            [(list `(NextToken () ,token))
-             (cw (set-next-token params token)
-                 result-proc)]
-             [else '()])))
+  (let* ([uri (endpoint->uri (cw-endpoint) "/")]
+         [heads (hasheq 'Host (endpoint-host (cw-endpoint))
+                        'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                        'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
+         [params (sort (cons `(Version "2010-08-01") params)
+                       param<?)]
+         [post-data (string->bytes/utf-8 (dict->form-urlencoded params))]
+         [heads (dict-set* heads
+                           'Authorization
+                           (aws-v4-authorization "POST"
+                                                 uri
+                                                 heads
+                                                 post-data
+                                                 (cw-region)
+                                                 "monitoring"))]
+         [result (post-with-retry uri params heads)])
+    (append (result-proc result)
+            ;; If AWS returned a NextToken element in the response XML, we
+            ;; need to call again to get more values.
+            (match (tags result 'NextToken)
+              [(list `(NextToken () ,token)) (cw (set-next-token params token)
+                                                 result-proc)]
+              [_                             '()]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -108,7 +103,7 @@
 
 (define period/c
   (make-flat-contract #:name 'non-zero-multiple-of-60
-                      #:first-order (lambda (x)
+                      #:first-order (λ (x)
                                       (and (>= x 60)
                                            (zero? (modulo x 60))))))
 
@@ -165,7 +160,7 @@
         ,@(if metric-name `((MetricName ,metric-name)) `())
         ,@(if namespace `((Namespace ,namespace)) `())
         ,@(dimensions/c->params dimensions))
-      (lambda (xpr)
+      (λ (xpr)
         ;; Only get 'member elements that are direct kids of 'Metrics.
         (for/list ([x (in-list (tags (nuke-ws xpr) 'member 'Metrics))])
             (metric (first-tag-value x 'MetricName)
@@ -266,7 +261,7 @@
         (StartTime ,(secs->str start-time))
         (EndTime ,(secs->str end-time))
         ,@(dimensions/c->params dimensions))
-      (lambda (xpr)
+      (λ (xpr)
         (for/list ([x (in-list (tags (nuke-ws xpr) 'member 'Datapoints))])
             (define (get sym f)
               (define v (first-tag-value x sym #f))
@@ -403,7 +398,7 @@
         ,@(if start-date `((StartDate ,(secs->str start-date))) `())
         ,@(if end-date `((EndDate ,(secs->str end-date))) `())
         ,@(if history-type `((HistoryType ,(format "~a" history-type))) `()))
-      (lambda (x)
+      (λ (x)
         (for/list ([x (in-list (tags (nuke-ws x) 'member 'AlarmHistoryItems))])
             (alarm-history (str->secs (first-tag-value x 'Timestamp #f))
                            (first-tag-value x 'HistoryItemType)
@@ -413,7 +408,7 @@
                            ;; as-is.
                            (match (tags x 'HistoryData)
                              [`((HistoryData () ,xs ...)) (string-join xs "")]
-                             [else #f])
+                             [_ #f])
                            (first-tag-value x 'HistorySummary))))))
 
 
@@ -458,77 +453,83 @@
 (module+ test
   (require rackunit
            "tests/data.rkt")
+  (define (do-test)
+    ;; describe-alarms
+    (define xs (describe-alarms))
+    (check-equal? (describe-alarms #:alarm-names (map alarm-name xs))
+                  xs)
+
+    ;; put/list/get metric data
+    (define test-unit 'Percent)
+    (define test-dimensions `((FakeDimensionName "FakeDimensionValue")))
+
+    (define end (current-seconds))
+    (define beg (- end (* 60 101)))        ;101 mintutes earlier
+    (define xs-put
+      (for/list ([n (in-range 0 101 1)]
+                 [sc (in-range beg end 60)])
+        (datum (test/metric)
+               n
+               #f #f #f #f
+               test-unit
+               sc
+               test-dimensions)))
+
+    ;; CW doesn't want > 20 at once. So do in batches of 20, which is
+    ;; good to exercise our handling of that.
+    (let loop ([xs xs-put])
+      (define len (length xs))
+      (define this (min len 20))
+      (define next (- len this))
+      (unless (zero? this)
+        (put-metric-data (test/namespace) (take xs this))
+        (unless (zero? next)
+          (loop (take-right xs next)))))
+
+    ;; First time, may take awhile to show up
+    (let loop ([tries 8])
+      (unless (zero? tries)
+        (when (empty? (list-metrics #:namespace (test/namespace)))
+          (sleep 15)
+          (loop (sub1 tries)))))
+
+    (define m (list (metric (test/metric) (test/namespace) '())))
+    (check-equal? (list-metrics #:namespace (test/namespace)) m)
+    (check-equal? (list-metrics #:metric-name (test/metric)) m)
+
+    (define xs-get
+      (get-metric-statistics #:metric-name (test/metric)
+                             #:namespace (test/namespace)
+                             #:unit test-unit
+                             #:statistics '(Sum Average Minimum Maximum
+                                                SampleCount)
+                             #:period 60
+                             #:start-time (- (current-seconds) (* 24 60 60))
+                             #:end-time (current-seconds)
+                             ;; #:dimensions test-dimensions
+                             ))
+    (check-true (not (empty? xs-get)))
+    (check-equal? (remove-duplicates (map datum-metric-name xs-get))
+                  (list (test/metric)))
+    (check-equal? (remove-duplicates (map datum-unit xs-get))
+                  (list test-unit))
+    ;; datum-value should always be #f when returned from
+    ;; get-metric-statistics
+    (check-equal? (remove-duplicates (map datum-value xs-get))
+                  (list #f))
+    ;; We specified all the statistics in #:statistics above, so make
+    ;; sure all are non-#f
+    (check-not-equal? (remove-duplicates (append
+                                          (map datum-min xs-get)
+                                          (map datum-max xs-get)
+                                          (map datum-sum xs-get)
+                                          (map datum-sample-count xs-get)))
+                      (list #f)))
   (when (test-data-exists?)
-    (test-case
-     "describe-alarms"
-     (define xs (describe-alarms))
-     (check-equal? (describe-alarms #:alarm-names (map alarm-name xs))
-                   xs))
-
-    (test-case
-     "put/list/get metric data"
-     (define test-unit 'Percent)
-     (define test-dimensions `((FakeDimensionName "FakeDimensionValue")))
-
-     (define end (current-seconds))
-     (define beg (- end (* 60 101)))        ;101 mintutes earlier
-     (define xs-put
-       (for/list ([n (in-range 0 101 1)]
-                  [sc (in-range beg end 60)])
-         (datum (test/metric)
-                n
-                #f #f #f #f
-                test-unit
-                sc
-                test-dimensions)))
-
-     ;; CW doesn't want > 20 at once. So do in batches of 20, which is
-     ;; good to exercise our handling of that.
-     (let loop ([xs xs-put])
-       (define len (length xs))
-       (define this (min len 20))
-       (define next (- len this))
-       (unless (zero? this)
-         (put-metric-data (test/namespace) (take xs this))
-         (unless (zero? next)
-           (loop (take-right xs next)))))
-
-     ;; First time, may take awhile to show up
-     (let loop ([tries 8])
-       (unless (zero? tries)
-         (when (empty? (list-metrics #:namespace (test/namespace)))
-           (sleep 15)
-           (loop (sub1 tries)))))
-
-     (define m (list (metric (test/metric) (test/namespace) '())))
-     (check-equal? (list-metrics #:namespace (test/namespace)) m)
-     (check-equal? (list-metrics #:metric-name (test/metric)) m)
-
-     (define xs-get
-       (get-metric-statistics #:metric-name (test/metric)
-                              #:namespace (test/namespace)
-                              #:unit test-unit
-                              #:statistics '(Sum Average Minimum Maximum
-                                             SampleCount)
-                              #:period 60
-                              #:start-time (- (current-seconds) (* 24 60 60))
-                              #:end-time (current-seconds)
-                              ;; #:dimensions test-dimensions
-                              ))
-     (check-true (not (empty? xs-get)))
-     (check-equal? (remove-duplicates (map datum-metric-name xs-get))
-                   (list (test/metric)))
-     (check-equal? (remove-duplicates (map datum-unit xs-get))
-                   (list test-unit))
-     ;; datum-value should always be #f when returned from
-     ;; get-metric-statistics
-     (check-equal? (remove-duplicates (map datum-value xs-get))
-                   (list #f))
-     ;; We specified all the statistics in #:statistics above, so make
-     ;; sure all are non-#f
-     (check-not-equal? (remove-duplicates (append
-                                           (map datum-min xs-get)
-                                           (map datum-max xs-get)
-                                           (map datum-sum xs-get)
-                                           (map datum-sample-count xs-get)))
-                       (list #f)))))
+    (for ([region '("us-east-1" "eu-central-1")])
+      (parameterize ([cw-region region]
+                     [cw-endpoint (endpoint (string-append "monitoring."
+                                                           region
+                                                           ".amazonaws.com")
+                                            #f)])
+        (do-test)))))
