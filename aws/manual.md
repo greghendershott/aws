@@ -1371,6 +1371,14 @@ Set the endpoint for the service. Defaults to `(endpoint
 "sns.us-east-1.amazonaws.com" #f)`.
 
 ```racket
+(sns-region) -> string?
+(sns-region v) -> void?
+  v : string?          
+```
+
+Set the region for the service. Defaults to `"us-east-1"`.
+
+```racket
 (create-topic name) -> string?
   name : string?              
 ```
@@ -1820,6 +1828,14 @@ support applications not “infrastucture.”)
 
 Set the endpoint for the service. Defaults to `(endpoint
 "monitoring.us-east-1.amazonaws.com" #t)`.
+
+```racket
+(cw-region) -> string?
+(cw-region v) -> void?
+  v : string?         
+```
+
+Set the region for the service. Defaults to `"us-east-1"`.
 
 ### 13.1. Contracts
 

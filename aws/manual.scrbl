@@ -1397,6 +1397,11 @@ Set the endpoint for the service. Defaults to @racket[(endpoint
 
 }
 
+@defparam[sns-region v string?]{
+
+Set the region for the service. Defaults to @racket["us-east-1"].
+
+}
 
 @defproc[(create-topic [name string?]) string?]{
 
@@ -1786,6 +1791,13 @@ Set the endpoint for the service. Defaults to @racket[(endpoint
 "monitoring.us-east-1.amazonaws.com" #t)].
 
 }
+
+@defparam[cw-region v string?]{
+
+Set the region for the service. Defaults to @racket["us-east-1"].
+
+}
+
 
 @subsection{Contracts}
 
