@@ -162,14 +162,16 @@
 
 (module+ test
   (require rackunit
+           racket/runtime-path
            http/head
            "tests/data.rkt")
+  (define-runtime-path test-suite-dir "vendor/aws4_testsuite")
   (parameterize ([private-key "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"]
                  [public-key "AKIDEXAMPLE"])
     (define (aws-test-file name)
       (regexp-replace*
        "\r\n"                           ;DOS files with CRLF
-       (file->string (build-path 'same "vendor" "aws4_testsuite" name))
+       (file->string (build-path test-suite-dir name))
        "\n"))
 
     (define heads (hash 'Date "Mon, 09 Sep 2011 23:36:00 GMT"
@@ -197,7 +199,7 @@
       (begin
         ;; Most annoying part of this is parsing their original .req:
         (define xs
-          (file->lines (build-path 'same "vendor" "aws4_testsuite"
+          (file->lines (build-path test-suite-dir
                                    (string-append base ".req"))))
         (define-values (method path)
           (match (car xs)
