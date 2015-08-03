@@ -1,12 +1,11 @@
 #lang racket
 
-(require http/request
-         http/head
-         net/head
+(require http/head
+         http/request
          json
+         net/head
          xml
-         "util.rkt"
-         )
+         "util.rkt")
 
 (struct exn:fail:aws exn:fail
         (http-code
@@ -42,9 +41,9 @@
     [302 h]
     [307 h] ;Temporary Redirect. Try again at Location header.
     ;; Codes for which we should raise an exception.
-    [else
-     (define x (read-entity/bytes p h))
-     (raise (header&response->exn:fail:aws h x (current-continuation-marks)))]))
+    [_ (raise (header&response->exn:fail:aws h
+                                             (read-entity/bytes p h)
+                                             (current-continuation-marks)))]))
 
 (define/contract/provide (header&response->exn:fail:aws h e ccm)
   (string? (or/c bytes? xexpr?) continuation-mark-set? . -> . exn:fail:aws?)

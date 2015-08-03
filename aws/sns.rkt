@@ -30,7 +30,7 @@
                            (aws-v4-authorization "GET"
                                                  uri
                                                  heads
-                                                 #""
+                                                 (sha256-hex-string #"")
                                                  (sns-region)
                                                  "sns"))]
          [result (call/input-request

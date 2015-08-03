@@ -1,26 +1,30 @@
 #lang racket
 
-(require net/head
-         net/base64
-         net/uri-codec
-         file/md5
-         xml
-         http/request
+(require file/md5
          http/head
-         "util.rkt"
+         http/request
+         net/base64
+         net/head
+         net/uri-codec
+         xml
          "exn.rkt"
          "keys.rkt"
-         "pool.rkt")
+         "pool.rkt"
+         "sigv4.rkt"
+         "util.rkt")
 
-(provide (contract-out [s3-scheme parameter/c]
-                       [s3-host parameter/c]
-                       [s3-path-requests? parameter/c]))
+(provide (contract-out [s3-scheme (parameter/c string?)]
+                       [s3-host (parameter/c string?)]
+                       [s3-region (parameter/c string?)]
+                       [s3-path-requests? (parameter/c boolean?)]))
 
 (define s3-scheme (make-parameter "http")) ;; (or/c "http" "https")
 
 ;; This probably should have been named `s3-endpoint` instead.
 ;; See "Endpoint" column in http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 (define s3-host (make-parameter "s3.amazonaws.com"))
+
+(define s3-region (make-parameter "us-east-1"))
 
 ;; Path style requests work only when the endpoint (what we call
 ;; `s3-host`) matches the location of the bucket. However they
@@ -65,6 +69,10 @@
                (equal? c #\-)
                (equal? c #\_))))]))
 
+;; naming convention here:
+;; "&" = elements as separate args/values
+;; "+" = elements combined into a single arg/value
+
 (define/contract/provide (bucket&path->uri b p)
   (string? string? . -> . string?)
   (cond [(s3-path-requests?)
@@ -72,12 +80,17 @@
         [else
          (string-append (s3-scheme) "://" b "." (s3-host) "/" p)]))
 
+(define/contract (bucket+path->uri b+p)
+  (string? . -> . string?)
+  (define-values (b p) (bucket+path->bucket&path b+p))
+  (bucket&path->uri b p))
+
 (define/contract/provide (bucket+path->bucket&path b+p)
   (string? . -> . (values string? string?))
   (match b+p
     [(regexp "^([^/]+?)/(.*?)$" (list _ b p)) (values b (or p ""))]
     [(regexp "^/") (error 'bucket+path->bucket&path "don't use leading /")]
-    [else (error 'bucket+path->bucket&path "invalid bucket+path: ~e" b+p)]))
+    [_ (error 'bucket+path->bucket&path "invalid bucket+path: ~e" b+p)]))
 
 (define/contract/provide (bucket+path->bucket&path&uri b+p)
   (string? . -> . (values string? string? string?))
@@ -93,55 +106,36 @@
 (define symbol-downcase
   (compose1 string->symbol string-downcase symbol->string))
 
-(define/contract (canonical-amz-headers-string h)
-  (dict? . -> . string?)
-  ;; Steps below are quoted or paraphrased from S3 docs:
-  ;; 1. Lower-case header name.
-  ;; 2. Headers sorted by header name.
-  ;; 3. The values of headers whose names occur more than once should
-  ;; be white space-trimmed and concatenated with comma separators to
-  ;; be compliant with section 4.2 of RFC 2616.
-  ;; 4. Remove any whitespace around the colon in the header
-  ;; 5. Remove any newlines ('\n') in continuation lines
-  ;; 6. Separate headers by newlines ('\n')
-  (let* ([xs (for/list ([(k v) (in-dict h)]
-                        #:when (regexp-match? #rx"^(?i:x-amz-)"
-                                              (symbol->string k)))
-               (format "~a:~a\n"                            ;4,6
-                       (string-downcase (symbol->string k)) ;1
-                       (regexp-replace #rx"\n" v ",")))]    ;3,5
-         [xs (sort xs string<?)])                           ;2
-    (string-join xs "")))
+(define/contract (make-date+authorization-headers uri method [heads '()] [body #""])
+  (->* ( string? string?)(dict? bytes?) dict?)
+  (let* ([body-hash (sha256-hex-string body)]
+         ;; Add Host now so included in authentication.
+         [host (let-values ([(scheme host port path query fragment) (split-uri uri)])
+                 (string-append (or host "")
+                                (if (and port (not (= port 80)))
+                                    (format ":~a" port)
+                                    "")))]
+         [heads (dict-set* heads
+                           'Host host
+                           'Date (seconds->gmt-8601-string 'basic)
+                           'x-amz-content-sha256 body-hash)]
+         [heads (dict-set heads
+                          'Authorization
+                          (aws-v4-authorization method
+                                                uri
+                                                heads
+                                                body-hash
+                                                (s3-region)
+                                                "s3"))])
+    heads))
 
-(define/contract (canonical-string-to-sign bucket+path method date heads)
-  (string? string? string? dict? . -> . string?)
-  (string-append method "\n"
-                 (dict-ref heads 'Content-MD5 "") "\n"
-                 (dict-ref heads 'Content-Type "") "\n"
-                 date "\n"
-                 (canonical-amz-headers-string heads) ;provides its own \n
-                 "/" bucket+path))
-
-(define/contract (make-date+authorization-headers bucket+path method heads)
-  (string? string? dict? . -> . dict?)
-  (ensure-have-keys)
-  (define date (seconds->gmt-string))
-  (dict-set (make-authorization-header (canonical-string-to-sign bucket+path
-                                                                 method
-                                                                 date
-                                                                 heads))
-            'Date
-            date))
-
-(define/contract/provide (uri&headers b+p method heads)
-  (string? string? dict? . -> . (values string? dict?))
-  (define-values (b p u) (bucket+path->bucket&path&uri b+p))
-  (define extra-heads (make-date+authorization-headers b+p method heads))
-  (define h (dict-merge heads extra-heads))
-  (values u h))
-
-(define (dict-merge d1 d2)
-  (apply dict-set* (cons d1 (flatten (dict->list d2)))))
+(define/contract/provide (uri&headers b+p method [heads '()] [body #""])
+  (->* (string? string?) (dict? bytes?) (values string? dict?))
+  (define uri (bucket+path->uri b+p))
+  (values uri (make-date+authorization-headers uri
+                                               method
+                                               heads
+                                               body)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -165,7 +159,7 @@
 
 (define/contract/provide (list-buckets)
   (-> (listof string?))
-  (define h (make-date+authorization-headers "" "GET" '()))
+  (define h (make-date+authorization-headers "/" "GET"))
   (define xpr (call/input-request "1.1" "GET" (s3-host) h read-entity/xexpr))
   (map third (tags xpr 'Name 'Bucket)))
 
@@ -175,7 +169,7 @@
   (string? . -> . string?)
   (define-values (u h) (uri&headers bucket+path "DELETE" '()))
   (call/input-request "1.1" "DELETE" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         h)))
 
@@ -188,11 +182,12 @@
                           `(Delete
                             ,@(for/list ([p (in-list paths)])
                                 `(Object () (Key () ,p)))))))
-  (define-values (u h) (uri&headers (string-append bucket "/?delete") "POST"
-                                    (dict-set* '()
-                                               'Content-MD5 (bytes->Content-MD5 data))))
+  (define-values (u h) (uri&headers (string-append bucket "/?delete")
+                                    "POST"
+                                    (hasheq 'Content-MD5 (bytes->Content-MD5 data))
+                                    data))
   (call/output-request "1.1" "POST" u data (bytes-length data) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          ;; Just because 200 OK doesn't mean no error.
                          ;; Check for <Error> in the response.
@@ -206,9 +201,9 @@
 
 (define/contract/provide (head bucket+path)
   (string? . -> . string?)
-  (define-values (u h) (uri&headers bucket+path "HEAD" '()))
+  (define-values (u h) (uri&headers bucket+path "HEAD"))
   (call/input-request "1.1" "HEAD" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         h)))
 
@@ -242,12 +237,10 @@
                                         ,@(if delimiter
                                               `((delimiter ,delimiter))
                                               '()))))
-    (define-values (_ __ uri)
-      (bucket+path->bucket&path&uri (string-append b "/?" qp)))
-    (define h (make-date+authorization-headers
-               (string-append b "/") "GET" '()))
+    (define uri (bucket+path->uri (string-append b "/?" qp)))
+    (define h (make-date+authorization-headers uri "GET"))
     (define xpr (call/input-request "1.1" "GET" uri  h
-                                    (lambda (in h)
+                                    (λ (in h)
                                       (check-response in h)
                                       (read-entity/xexpr in h))))
     (define contents (tags xpr 'Contents))
@@ -271,7 +264,7 @@
 
 (define/contract/provide (ls b+p)
   (string? . -> . (listof string?))
-  (map (lambda (x) (first-tag-value x 'Key))
+  (map (λ (x) (first-tag-value x 'Key))
        (ls/proc b+p append '())))
 
 ;; TO-DO: Currently, for each object we make two HTTP requests and use
@@ -303,10 +296,10 @@
                  (hash 'x-amz-copy-source
                        (string-append "/" (uri-encode b+p/from)))))
   (call/output-request "1.1" "PUT" u
-                       (lambda (out) (void))
+                       (λ (out) (void))
                        0
                        h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          ;; Just because check-response didn't raise
                          ;; an exception doesn't mean we're OK. Why?
@@ -361,7 +354,7 @@
                                     "GET"
                                     (maybe-add-range-header heads beg end)))
   (call/input-request "1.1" "GET" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (reader in h))))
 
@@ -388,28 +381,46 @@
                    'truncate/replace))
    . ->* . void)
   (get/proc bucket+path
-            (lambda (in h)
+            (λ (in h)
               (call-with-output-file* path
-                                      (lambda (out)
+                                      (λ (out)
                                         (read-entity/port in h out)
                                         (void))
                                       #:mode mode-flag
                                       #:exists exists-flag))
             heads))
 
+;; Historical note: Originally, put was the primary procedure and
+;; put/bytes and put/file were wrappers. But while implementing AWS
+;; Signature v4, which requires a SHA-256 hash of the contents, I
+;; switched to put/byte being the primary. This is somewhat less
+;; efficient. I could have used the chunked upload signature process,
+;; which does NOT require knowing all the data up-front. However, with
+;; the availability of multipart-upload, this seemed like more work
+;; than necessary.
+
 (define 100MB (* 100 1024 1024))
 
 (define/contract/provide (put bucket+path
                               writer
-                              data-len
+                              _data-len ;n/a as of sigv4 update
                               mime-type
                               [heads '()])
-  ((string?
-    (output-port? . -> . void?)
-    (or/c #f exact-nonnegative-integer?)
-    string?)
-   (dict?)
-   . ->* . string?)
+  ((string? (output-port? . -> . void?) (or/c #f exact-nonnegative-integer?) string?) (dict?) . ->* . string?)
+  (define ob (open-output-bytes))
+  (writer ob)
+  (define data (get-output-bytes ob))
+  (put/bytes bucket+path
+             data
+             mime-type
+             heads))
+
+(define/contract/provide (put/bytes bucket+path
+                                    data
+                                    mime-type
+                                    [heads '()])
+  ((string? bytes? string?) (dict?) . ->* . string?)
+  (define data-len (bytes-length data))
   (when (> data-len 100MB)
     (log-aws-warning (tr "S3 `put' where " data-len
                          "(when > 100 MB, consider using `multipart-put')")))
@@ -417,21 +428,12 @@
     (uri&headers bucket+path
                  "PUT"
                  (dict-set* heads
+                            'Expect "100-continue"
                             'Content-Type mime-type
-                            'Expect "100-continue")))
-  (call/output-request "1.1" "PUT" u writer data-len h check-response))
-
-(define/contract/provide (put/bytes bucket+path
-                                    data
-                                    mime-type
-                                    [heads '()])
-  ((string? bytes? string?) (dict?) . ->* . string?)
-  (put bucket+path
-       (lambda (out) (display data out))
-       (bytes-length data)
-       mime-type
-       (dict-set heads
-                 'Content-MD5 (bytes->Content-MD5 data))))
+                            'Content-MD5 (bytes->Content-MD5 data)
+                            'Expect "100-continue")
+                 data))
+  (call/output-request "1.1" "PUT" u data data-len h check-response))
 
 (define/contract/provide (put/file bucket+path
                                    path
@@ -440,16 +442,12 @@
   ((string? path?)
    (#:mime-type (or/c #f string?) #:mode (or/c 'binary 'text))
    . ->* . string?)
-  (put bucket+path
-       (lambda (out)
-         (call-with-input-file* path
-                                (lambda (in)
-                                  (copy-port in out))
-                                #:mode mode-flag))
-       (file-size path)
-       (or mime-type ((path->mime-proc) path))
-       (hash 'Content-MD5 (file->Content-MD5 path)
-             'Content-Disposition (path->Content-Disposition path))))
+  (let ([mime-type (or mime-type ((path->mime-proc) path))])
+    (put/bytes bucket+path
+               (file->bytes path #:mode mode-flag)
+               mime-type
+               (hash 'Content-MD5 (file->Content-MD5 path)
+                     'Content-Disposition (path->Content-Disposition path)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -482,10 +480,10 @@
   ;; in-memory buffers. Easy, Trigger.
   (define parts
     (with-worker-pool (min 4 num-parts)
-      (lambda (pool)
+      (λ (pool)
         (for/list ([n (in-range num-parts)])
           (add-job pool
-                   (lambda ()
+                   (λ ()
                      (upload-part b+p upid (add1 n) (get-part n)))))
         (get-results pool num-parts))))
   (complete-multipart-upload b+p upid parts)
@@ -520,7 +518,7 @@
                                     "POST"
                                     (dict-set* heads 'Content-Type mime-type)))
   (define x (call/input-request "1.1" "POST" u h
-                                (lambda (in h)
+                                (λ (in h)
                                   (check-response in h)
                                   (read-entity/xexpr in h))))
   (define upid (first-tag-value x 'UploadId))
@@ -538,9 +536,10 @@
     (uri&headers b+p
                  "PUT"
                  (hash 'Expect "100-continue"
-                       'Content-MD5 (bytes->Content-MD5 bstr))))
+                       'Content-MD5 (bytes->Content-MD5 bstr))
+                 bstr))
   (call/output-request "1.1" "PUT" u bstr (bytes-length bstr) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          (read-entity/bytes in h)
                          (define part-id (extract-field "ETag" h))
@@ -552,9 +551,9 @@
   (log-aws-debug (tr "complete-multipart-upload" upid parts))
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
-  (define-values (u h) (uri&headers b+p "POST" '()))
+  (define-values (u h) (uri&headers b+p "POST" '() xm))
   (call/output-request "1.1" "POST" u xm (bytes-length xm) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          ;; Even if we got a 200 OK status in the
                          ;; header, there may be a delay of minutes
@@ -576,7 +575,7 @@
    (xexpr->string
     `(CompleteMultipartUpload
       ()
-      ,@(map (lambda (x)
+      ,@(map (λ (x)
                (match-define (cons part etag) x)
                (let ([part (number->string part)]
                      [etag (cadr (regexp-match #rx"^\"(.+?)\"$" etag))])
@@ -590,7 +589,7 @@
   (define b+p (string-append bucket "/?uploads"))
   (define-values (u h) (uri&headers b+p "GET" '()))
   (call/input-request "1.1" "GET" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (read-entity/xexpr in h))))
 
@@ -599,7 +598,7 @@
   (define b+p (string-append bucket+path"?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "DELETE" '()))
   (call/input-request "1.1" "DELETE" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         h)))
 
@@ -614,9 +613,9 @@
 
 (define/contract (port->Content-MD5 in)
   (input-port? . -> . string?)
-  (match (base64-encode (md5 in #f)) ;zap trailing \r\n
-    [(regexp "^(.+?)\r\n$" (list _ s))
-     (bytes->string/utf-8 s)]))
+  (match (base64-encode (md5 in #f))
+    ;; zap trailing \r\n
+    [(regexp "^(.+?)\r\n$" (list _ s)) (bytes->string/utf-8 s)]))
 
 (define/contract (bytes->Content-MD5 b)
   (bytes? . -> . string?)
@@ -626,20 +625,14 @@
   (path-string? . -> . string?)
   (call-with-input-file* p port->Content-MD5))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Query string request authentication
-(define/contract/provide (sign-uri bucket+path method expires heads)
-  (string? string? exact-positive-integer? dict?
-           . -> . string?)
-  (define s (canonical-string-to-sign bucket+path method
-                                      (number->string expires) heads))
+
+(define/contract/provide (sign-uri bucket+path method expires _heads)
+  (string? string? expires/c dict? . -> . string?)
+  (ensure-have-keys)
   (define-values (b p) (bucket+path->bucket&path bucket+path))
-  (string-append
-   (bucket&path->uri b p)
-   "?"
-   (dict->form-urlencoded
-    `((AWSAccessKeyId ,(public-key))
-      (Expires ,(number->string expires))
-      (Signature ,(sha1-encode s))))))
+  (aws-v4-signed-uri method (bucket&path->uri b p) (s3-region) "s3" expires))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -669,7 +662,7 @@
 (define (guess-mime-type path)
   ;; Exception handler in case `split-path' barfs. Since need for
   ;; that, use to avoid else case for `match', too.
-  (with-handlers ([exn:fail? (lambda (exn) default-mime-type)])
+  (with-handlers ([exn:fail? (λ (exn) default-mime-type)])
     (define-values (base name dir?) (split-path path))
     (match (path-element->string name)
       [(regexp "\\.([^.]*)$" (list _ ext))
@@ -721,17 +714,6 @@
      (check-equal? u "http://bucket.s3.amazonaws.com/path/name")))
 
   (test-case
-   "canonical-amz-headers-string"
-   (check-equal? (canonical-amz-headers-string
-                  (hash 'X-AMZ-Meta-ZZZ "VALUE"
-                        'X-Amz-Meta-x "A\nZ"
-                        'X-Amz-Meta-AAA "Value"
-                        'IGNORE-ME "PLEASE"))
-                 (string-append "x-amz-meta-aaa:Value" "\n"
-                                "x-amz-meta-x:A,Z" "\n"
-                                "x-amz-meta-zzz:VALUE" "\n")))
-
-  (test-case
    "guess-mime-type"
    (check-equal? (guess-mime-type "/path/to/file.txt") "text/plain")
    (check-equal? (guess-mime-type "/path/to/file.jpg") "image/jpeg")
@@ -760,145 +742,154 @@
   ;; figure out the source of the intermittent errors, and looking for
   ;; any other reasonable way to address this.
   (define bucket-suffix 0)
-  (define/contract (test-bucket-ops region)
-    ((or/c #f string?) . -> . any)
+  (define/contract (test-bucket-ops host region create-bucket-region)
+    (string? string? (or/c #f string?) . -> . any)
+    (parameterize ([s3-host host]
+                   [s3-region region])
+      (printf "~a: Host=~a Region=~a create-bucket-region=~a\n"
+              (if (s3-path-requests?) "Path Style" "Virtual Hosted")
+              (s3-host)
+              (s3-region)
+              create-bucket-region)
 
-    (printf "~a: Endpoint=~a Region=~a\n"
-            (if (s3-path-requests?) "Path Style" "Virtual Hosted")
-            (s3-host)
-            region)
+      (define bucket (format "~a-~a-~a"
+                             (test/bucket) (s3-region) bucket-suffix))
+      (set! bucket-suffix (add1 bucket-suffix))
 
-    (define bucket (format "~a-~a-~a"
-                           (test/bucket) (or region "us-standard") bucket-suffix))
-    (set! bucket-suffix (add1 bucket-suffix))
+      (ensure-have-keys)
 
-    (ensure-have-keys)
+      (define (member? x xs)
+        (not (not (member x xs))))
 
-    (define (member? x xs)
-      (not (not (member x xs))))
+      (create-bucket bucket create-bucket-region)
+      (check-true (member? bucket (list-buckets)))
 
-    (create-bucket bucket region)
-    (check-true (member? bucket (list-buckets)))
+      (check-equal? (ls (string-append bucket "/")) '())
+      (check-equal? (ls/proc (string-append bucket "/") (λ (v x) #t) #f) #f)
 
-    (check-equal? (ls (string-append bucket "/")) '())
-    (check-equal? (ls/proc (string-append bucket "/") (lambda (v x) #t) #f) #f)
+      (define b+p (string-append bucket "/" (test/path)))
 
-    (define b+p (string-append bucket "/" (test/path)))
-
-    ;; put/bytes
-    (define data #"Hello, world.")
-    (put/bytes b+p data default-mime-type)
-    (check-equal? (get/bytes b+p) data)
-    (check-equal? (get/bytes b+p '() 0 4)
-                  (subbytes data 0 4))
-    (check-equal? (extract-http-code (head b+p)) 200)
-    (check-true (xexpr? (get-acl b+p)))
-    
-    ;; ls and ls/proc:
-    (check-equal? (list (test/path)) (ls (string-append bucket "/")))
-    (check-equal? (ls/proc (string-append bucket "/") (lambda (v x) (add1 v)) 0) 1)
-    (let loop ([p (string-split (test/path) "/")] [prefix ""])
-      (define more? (pair? (cdr p)))
-      (ls/proc (string-append bucket "/" prefix)
-               #:delimiter "/"
-               (lambda (v xs)
-                 (check-equal? (length xs) 1)
-                 (unless (null? xs)
-                   (define x (car xs))
-                   (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
-                   (check-equal? (first-tag-value x (if more? 'Prefix 'Key))
-                                 (string-append prefix (car p) (if more? "/" "")))))
-               (void))
-      (when more?
-        (loop (cdr p)
-              (string-append prefix (car p) "/"))))
-
-    ;; delete and delete-multiple
-    (define more-files
-      (for/list ([i (in-range 1 4)])
-        (define fn (string-append (test/path) "-" (number->string i)))
-        (put/bytes (string-append bucket "/" fn)
-                   (make-bytes i (char->integer #\x))
-                   default-mime-type)
-        fn))
-    (check-equal? (ls (string-append bucket "/")) (cons (test/path) more-files))
-    (delete (string-append bucket "/" (car more-files)))
-    (check-equal? (ls (string-append bucket "/")) (cons (test/path) (cdr more-files)))
-    (delete-multiple bucket (cdr more-files))
-    (check-equal? (ls (string-append bucket "/")) (list (test/path)))
-
-    ;; sign-uri
-    (check-equal?
-     (call/input-request "1.1" "GET"
-                         (sign-uri b+p "GET" (+ (current-seconds) 60) '())
-                         '()
-                         read-entity/bytes)
-     data)
-
-    ;; ACL
-    (define acl (get-acl b+p))
-    (put-acl b+p acl)
-    (check-equal? (get-acl b+p) acl)
-
-    ;; Copy
-    (define b+p/copy (string-append b+p "-copy"))
-    (copy b+p b+p/copy)
-    (check-true (member? (string-append (test/path) "-copy")
-                         (ls b+p/copy)))
-
-    ;; Try put & get file, both simple and multipart
-    (define (put&get-file put-using p)
-      (define chksum (file->Content-MD5 p))
-      (put-using b+p p #:mime-type "text/plain")
-      (get/file b+p p #:exists 'replace)
-      (check-equal? (file->Content-MD5 p) chksum)
+      ;; put/bytes
+      (define data #"Hello, world.")
+      (put/bytes b+p data default-mime-type)
+      (check-equal? (get/bytes b+p) data)
+      (check-equal? (get/bytes b+p '() 0 4)
+                    (subbytes data 0 4))
       (check-equal? (extract-http-code (head b+p)) 200)
-      (check-true (member? (test/path) (ls b+p)))
-      (check-true (member? (test/path)
-                           (ls (string-append bucket "/"))))
-      (check-true (member? (test/path)
-                           (ls (string-append bucket
-                                              "/"
-                                              (substring (test/path) 0 3))))))
-    (define p (build-path (find-system-path 'temp-dir) "s3-test-file.txt"))
-    (with-output-to-file p
-      (lambda () (for ([i (in-range 10000)]) (displayln (random))))
-      #:exists 'replace #:mode 'text)
-    (put&get-file put/file p)
-    (put&get-file multipart-put/file p)
+      (check-true (xexpr? (get-acl b+p)))
 
-    ;; Multipart upload: Do with enough parts to exercise the worker
-    ;; pool of 4 threads. How about 8 parts.
-    (define part-size 5MB) ;minimum S3 will accept for multipart parts
-    (define (get-part-bytes n) (make-bytes part-size n))
-    (define num-parts 8)
-    (multipart-put b+p num-parts get-part-bytes)
-    (for ([i (in-range num-parts)])
-      ;; This is also an opportunity to test Range requests ability:
-      (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
-                    (get-part-bytes i)))
+      ;; ls and ls/proc:
+      (check-equal? (list (test/path)) (ls (string-append bucket "/")))
+      (check-equal? (ls/proc (string-append bucket "/") (λ (v x) (add1 v)) 0) 1)
+      (let loop ([p (string-split (test/path) "/")] [prefix ""])
+        (define more? (pair? (cdr p)))
+        (ls/proc (string-append bucket "/" prefix)
+                 #:delimiter "/"
+                 (λ (v xs)
+                   (check-equal? (length xs) 1)
+                   (unless (null? xs)
+                     (define x (car xs))
+                     (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
+                     (check-equal? (first-tag-value x (if more? 'Prefix 'Key))
+                                   (string-append prefix (car p) (if more? "/" "")))))
+                 (void))
+        (when more?
+          (loop (cdr p)
+                (string-append prefix (car p) "/"))))
 
-    ;; Cleanup
-    (delete b+p/copy)
-    (delete b+p)
-    (delete-bucket bucket)
-   (void))
+      ;; delete and delete-multiple
+      (define more-files
+        (for/list ([i (in-range 1 4)])
+          (define fn (string-append (test/path) "-" (number->string i)))
+          (put/bytes (string-append bucket "/" fn)
+                     (make-bytes i (char->integer #\x))
+                     default-mime-type)
+          fn))
+      (check-equal? (ls (string-append bucket "/")) (cons (test/path) more-files))
+      (delete (string-append bucket "/" (car more-files)))
+      (check-equal? (ls (string-append bucket "/")) (cons (test/path) (cdr more-files)))
+      (delete-multiple bucket (cdr more-files))
+      (check-equal? (ls (string-append bucket "/")) (list (test/path)))
+
+      ;; sign-uri
+      (check-equal?
+       (call/input-request "1.1" "GET"
+                           (sign-uri b+p "GET" 60 '())
+                           '()
+                           read-entity/bytes)
+       data)
+      (let* ([expire 3]
+             [uri (sign-uri b+p "GET" expire '())]
+             [_ (sleep (add1 expire))]
+             [x (call/input-request "1.1" "GET" uri '() read-entity/xexpr)])
+        (check-equal? (first-tag-value x 'Message) "Request has expired"))
+
+      ;; ACL
+      (define acl (get-acl b+p))
+      (put-acl b+p acl)
+      (check-equal? (get-acl b+p) acl)
+
+      ;; Copy
+      (define b+p/copy (string-append b+p "-copy"))
+      (copy b+p b+p/copy)
+      (check-true (member? (string-append (test/path) "-copy")
+                           (ls b+p/copy)))
+
+      ;; Try put & get file, both simple and multipart
+      (define (put&get-file put-using p)
+        (define chksum (file->Content-MD5 p))
+        (put-using b+p p #:mime-type "text/plain")
+        (get/file b+p p #:exists 'replace)
+        (check-equal? (file->Content-MD5 p) chksum)
+        (check-equal? (extract-http-code (head b+p)) 200)
+        (check-true (member? (test/path) (ls b+p)))
+        (check-true (member? (test/path)
+                             (ls (string-append bucket "/"))))
+        (check-true (member? (test/path)
+                             (ls (string-append bucket
+                                                "/"
+                                                (substring (test/path) 0 3))))))
+      (define p (build-path (find-system-path 'temp-dir) "s3-test-file.txt"))
+      (with-output-to-file p
+        (λ () (for ([i (in-range 10000)]) (displayln (random))))
+        #:exists 'replace #:mode 'text)
+      (put&get-file put/file p)
+      (put&get-file multipart-put/file p)
+      (delete-file p)
+
+      ;; Multipart upload: Do with enough parts to exercise the worker
+      ;; pool of 4 threads. How about 8 parts.
+      (define part-size 5MB) ;minimum S3 will accept for multipart parts
+      (define (get-part-bytes n) (make-bytes part-size n))
+      (define num-parts 8)
+      (multipart-put b+p num-parts get-part-bytes)
+      (for ([i (in-range num-parts)])
+        ;; This is also an opportunity to test Range requests ability:
+        (check-equal? (get/bytes b+p '() (* i part-size) (* (add1 i) part-size))
+                      (get-part-bytes i)))
+
+      ;; Cleanup
+      (delete b+p/copy)
+      (delete b+p)
+      (delete-bucket bucket)
+      (void)))
 
   (when (test-data-exists?)
     (for ([pool '(0 10)])
       (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
       (parameterize ([current-pool-timeout pool])
         (parameterize ([s3-path-requests? #f])
-          (parameterize ([s3-host "s3.amazonaws.com"])
-            (test-bucket-ops #f) ;us-standard
-            (test-bucket-ops "eu-west-1"))
-          (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-            (test-bucket-ops "eu-west-1")))
+          (test-bucket-ops "s3.amazonaws.com"           "us-east-1" #f)
+          ;;; Should create-bucket region arg default to s3-region, and,
+          ;;; be documented as obsolete? Why: With sigv4 the following
+          ;;; test case -- creating a bucket in another region --
+          ;;; fail: "The authorization header is malformed; the region
+          ;;; 'us-east-1' is wrong; expecting 'eu-west-1'":
+          ;;(test-bucket-ops "s3.amazonaws.com"           "us-east-1" "eu-west-1")
+          (test-bucket-ops "s3-eu-west-1.amazonaws.com" "eu-west-1" "eu-west-1"))
         (parameterize ([s3-path-requests? #t])
-          (parameterize ([s3-host "s3.amazonaws.com"])
-            (test-bucket-ops #f)) ;us-standard
-          (parameterize ([s3-host "s3-eu-west-1.amazonaws.com"])
-            (test-bucket-ops "eu-west-1")))))
+          (test-bucket-ops "s3.amazonaws.com"           "us-east-1" #f)
+          (test-bucket-ops "s3-eu-west-1.amazonaws.com" "eu-west-1" "eu-west-1"))))
 
     (test-case
      "100-continue"
@@ -915,9 +906,9 @@
      (define writer-called? #f)
      (check-exn
       exn:fail:aws?
-      (lambda ()
+      (λ ()
         (put (string-append (test/bucket) "/" (test/path))
-             (lambda (out)
+             (λ (out)
                ;; Set flag that we were asked to write something.
                ;; (But for this test, don't actually write anything.)
                (set! writer-called? #t))

@@ -1,14 +1,10 @@
 #lang racket
 
-(require net/base64
+(require http/request
          json
-         http/request
-         http/head
-         "keys.rkt"
          "exn.rkt"
-         "util.rkt"
          "sigv4.rkt"
-         )
+         "util.rkt")
 
 (provide dynamo-endpoint
          dynamo-region
@@ -25,8 +21,7 @@
          query
          scan
          update-item
-         update-table
-         )
+         update-table)
 
 (define dynamo-endpoint
   (make-parameter (endpoint "dynamodb.us-east-1.amazonaws.com" #t)))
@@ -49,7 +44,7 @@
                 method
                 uri
                 heads
-                body
+                (sha256-hex-string body)
                 (dynamo-region)
                 service))))
 
@@ -65,10 +60,10 @@
                             (hash 'x-amz-target target)
                             bstr))
   (call/output-request "1.1" "POST" u bstr (bytes-length bstr) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          (bytes->jsexpr (read-entity/bytes in h)))))
-  
+
 (define/contract (create-table name
                                read-units
                                write-units
@@ -155,11 +150,11 @@
     (test-case
      "dynamo"
      (define test (test/dynamo-table))
-     (check-not-exn (lambda () (create-table test 1 1
+     (check-not-exn (λ () (create-table test 1 1
                                              "HashKey" "S"
                                              "RangeKey" "S")))
-     (check-not-exn (lambda () (list-tables #:limit 10)))
-     (check-not-exn (lambda () (describe-table test)))
+     (check-not-exn (λ () (list-tables #:limit 10)))
+     (check-not-exn (λ () (describe-table test)))
      (let loop ()
        (define x (describe-table test))
        (define status (hash-ref (hash-ref x 'Table) 'TableStatus #f))
@@ -168,7 +163,7 @@
          (sleep 15)
          (loop)))
      (check-not-exn
-      (lambda () (put-item (hasheq 'TableName test
+      (λ () (put-item (hasheq 'TableName test
                                    'Item (hasheq 'HashKey (hasheq 'S "Hi")
                                                  'RangeKey (hasheq 'S "world")
                                                  'Foo (hasheq 'S "bar"))))))
@@ -178,4 +173,4 @@
                          'Key (hasheq 'HashKeyElement (hasheq 'S "Hi")
                                       'RangeKeyElement (hasheq 'S "world")))))
      (check-equal? (hash-ref (hash-ref js 'Item) 'Foo) (hasheq 'S "bar"))
-     (check-not-exn (lambda () (delete-table test))))))
+     (check-not-exn (λ () (delete-table test))))))

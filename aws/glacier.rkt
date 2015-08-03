@@ -47,7 +47,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region)
                                                       service))
                       (lambda (p h)
@@ -68,7 +69,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -89,7 +91,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -108,7 +111,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -139,7 +143,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization m u h data
+                                 (aws-v4-authorization m u h
+                                                       (sha256-hex-string data)
                                                        (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -159,7 +164,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -179,7 +185,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -208,7 +215,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization m u h data
+                                 (aws-v4-authorization m u h
+                                                       (sha256-hex-string data)
                                                        (region) service))
                        (lambda (p h)
                          (check-response p h)
@@ -229,7 +237,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -260,7 +269,8 @@
                        0
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization m u h #""
+                                 (aws-v4-authorization m u h
+                                                       (sha256-hex-string #"")
                                                        (region) service))
                        (lambda (p h)
                          (check-response p h)
@@ -312,7 +322,8 @@
                            (bytes-length data)
                            (dict-set h
                                      'Authorization
-                                     (aws-v4-authorization m u h data
+                                     (aws-v4-authorization m u h
+                                                           (sha256-hex-string data)
                                                            (region) service))
                            (lambda (p h)
                              (check-response p h)
@@ -382,7 +393,8 @@
                        0
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization m u h #""
+                                 (aws-v4-authorization m u h
+                                                       (sha256-hex-string #"")
                                                        (region)
                                                        service))
                        (lambda (p h)
@@ -471,7 +483,8 @@
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
-                                 (aws-v4-authorization m u h data
+                                 (aws-v4-authorization m u h
+                                                       (sha256-hex-string data)
                                                        (region) service))
                        (lambda (p h)
                          (check-response p h)
@@ -491,7 +504,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -511,7 +525,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (p h)
                         (check-response p h)
@@ -535,7 +550,8 @@
                       u
                       (dict-set h
                                 'Authorization
-                                (aws-v4-authorization m u h #""
+                                (aws-v4-authorization m u h
+                                                      (sha256-hex-string #"")
                                                       (region) service))
                       (lambda (in h)
                         (check-response in h)
@@ -679,12 +695,12 @@
 
       (check-not-exn
        (lambda () (set-vault-notifications vault topic-arn #t #t))))
-    
+
     ;; Test a few regions. Note that when using SNS with Glacier, the
-    ;; regions and endpoits must match, so be sure to set sns-endpoint,
-    ;; too.
+    ;; regions and endpoits must match, so be sure to set sns-endpoint
+    ;; and sns-region, too.
     (for ([r '("us-east-1" "us-west-1" "eu-west-1")])
-      (parameterize
-          ([region r]
-           [sns-endpoint (endpoint (format "sns.~a.amazonaws.com" r) #f)])
+      (parameterize ([region r]
+                     [sns-region r]
+                     [sns-endpoint (endpoint (format "sns.~a.amazonaws.com" r) #f)])
         (go)))))
