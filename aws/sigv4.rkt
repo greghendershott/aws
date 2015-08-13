@@ -10,7 +10,9 @@
 (provide aws-v4-authorization
          aws-v4-signed-uri
          expires/c
-         sha256-hex-string)
+         sha256-hex-string
+         credential-scope
+         signature)
 
 (module+ test
   (require rackunit))
@@ -108,11 +110,14 @@
 
 (define/contract (8601-date-only s)
   (string? . -> . string?)
-  (match s [(regexp "^(.+?)T" (list _ d)) d]))
+  (match s
+    [(pregexp "^(\\d{8})" (list _ d)) d]
+    [_ (error '8601-date-only "expected an 8601 date or datetime")]))
 
 ;; Value for Authorization header
 (define/contract (authorization string-to-sign heads 8601-date region service)
   (string? dict? string? string? string? . -> . string?)
+  (ensure-have-keys)
   (string-append
    "AWS4-HMAC-SHA256 "
    "Credential=" (public-key) "/" (8601-date-only 8601-date) "/" region "/"
@@ -132,6 +137,7 @@
 
 (define/contract (derived-signing-key 8601-date region service)
   (string? string? string? . -> . bytes?)
+  (ensure-have-keys)
   (define k-date (hmac-sha256 (bytes-append #"AWS4"
                                             (string->bytes/utf-8 (private-key)))
                               (string->bytes/utf-8 (8601-date-only 8601-date))))
@@ -142,7 +148,6 @@
 
 (define/contract (aws-v4-authorization method uri heads sha256-hex-str region service)
   (string? string? dict? string? string? string? . -> . string?)
-  (ensure-have-keys)
   (define date
     (match (dict-ref heads 'Date)
       [(pregexp "^(\\d{8}T\\d{6}Z)" (list _ d)) d]
@@ -293,9 +298,7 @@
                                                fragment)
                                   `([Host . ,host])
                                   "UNSIGNED-PAYLOAD"))
-  ;;(displayln creq)
   (define sts (string-to-sign date region service creq))
-  ;;(displayln sts)
   (define sig (signature sts date region service))
   (combine-uri scheme
                host
