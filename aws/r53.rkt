@@ -1,11 +1,9 @@
 #lang racket
 
-(require net/base64
+(require http/request
          xml
-         http/request
-         http/head
-         "keys.rkt"
          "exn.rkt"
+         "sigv4.rkt"
          "util.rkt")
 
 (provide r53-endpoint
@@ -19,27 +17,29 @@
 
 (define r53-endpoint (make-parameter (endpoint "route53.amazonaws.com" #t)))
 
-;; Holy cow, an AWS request signing method that's simple! The string
-;; to sign is simply the value of the Date header.
-(define/contract (date+authorize h)
-  (dict? . -> . dict?)
-  (define d (seconds->gmt-string))
-  (define a (format
-             "AWS3-HTTPS AWSAccessKeyId=~a,Algorithm=HmacSHA256,Signature=~a"
-             (public-key)
-             (sha256-encode d)))
-  (dict-set* h
-             'Date d
-             'X-Amzn-Authorization a))
+(define/contract (date+authorize method uri heads body)
+  (-> string? string? dict? bytes? dict?)
+  (let ([heads (dict-set* heads
+                          'Host (endpoint-host (r53-endpoint))
+                          'Date (seconds->gmt-8601-string 'basic
+                                                          (current-seconds)))])
+    (dict-set* heads
+               "Authorization"
+               (aws-v4-authorization
+                method
+                uri
+                heads
+                (sha256-hex-string body)
+                "us-east-1"
+                "route53"))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; hosted zones
+
+;;; hosted zones
 
 (define/contract (create-hosted-zone name unique [comment ""])
-  ((string? string?) (string?) . ->* . xexpr?)
+  (->* (string? string?) (string?) xexpr?)
   (define p "/2012-02-29/hostedzone")
   (define u (endpoint->uri (r53-endpoint) p))
-  (define h (date+authorize (hash 'Content-Type "application/xml")))
   (define bstr (string->bytes/utf-8
                 (xexpr->string
                  `(CreateHostedZoneRequest
@@ -47,18 +47,22 @@
                    (Name () ,name)
                    (CallerReference () ,unique)
                    (HostedZoneConfig () (Comment () ,comment))))))
+  (define h (date+authorize "POST"
+                            u
+                            (hasheq 'Content-Type "application/xml")
+                            bstr))
   (call/output-request "1.1" "POST" u bstr (bytes-length bstr) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          (read-entity/xexpr in h))))
 
 (define/contract (delete-hosted-zone id)
-  (string? . -> . xexpr?)
+  (-> string? xexpr?)
   (define p (string-append "/2012-02-29" id))
   (define u (endpoint->uri (r53-endpoint) p))
-  (define h (date+authorize '()))
+  (define h (date+authorize "DELETE" u '() #""))
   (call/input-request "1.1" "DELETE" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (read-entity/xexpr in h))))
 
@@ -66,34 +70,34 @@
   (-> xexpr?)
   (define p "/2012-02-29/hostedzone")
   (define u (endpoint->uri (r53-endpoint) p))
-  (define h (date+authorize '()))
+  (define h (date+authorize "GET" u '() #""))
   (call/input-request "1.1" "GET" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (read-entity/xexpr in h))))
 
 (define/contract (get-hosted-zone id)
-  (string? . -> . xexpr?)
+  (-> string? xexpr?)
   (define p (string-append "/2012-02-29" id))
   (define u (endpoint->uri (r53-endpoint) p))
-  (define h (date+authorize '()))
+  (define h (date+authorize "GET" u '() #""))
   (call/input-request "1.1" "GET" u h
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (read-entity/xexpr in h))))
 
 (define/contract (domain-name->zone-id name)
-  (string? . -> . (or/c #f string?))
+  (-> string? (or/c #f string?))
   (let ([name (match name           ;helpfully (?) append . if missing
                 [(pregexp "\\.$") name]
-                [else (string-append name ".")])])
-    (for/or ([x (tags (list-hosted-zones) 'HostedZone)])
-      (define s (first-tag-value x 'Name))
-      (cond [(and s (string=? s name)) (first-tag-value x 'Id)]
-            [else #f]))))
+                [_ (string-append name ".")])])
+    (for/or ([zone (tags (list-hosted-zones) 'HostedZone)])
+      (match (first-tag-value zone 'Name)
+        [(== name) (first-tag-value zone 'Id)]
+        [_ #f]))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; record sets
+
+;;; record sets
 
 (define record-type/c
   (or/c 'A 'AAAA 'CNAME 'MX 'NS 'PTR 'SOA 'SPF 'SRV 'TXT))
@@ -108,12 +112,12 @@
                                             #:name [name #f]
                                             #:type [type #f]
                                             #:id [id #f])
-  ((string?)
-   (#:max-items (or/c #f exact-positive-integer?)
-    #:name (or/c #f string?)
-    #:type (or/c #f record-type/c)
-    #:id (or/c #f string?))
-   . ->* . (listof xexpr?))
+  (->* (string?)
+       (#:max-items (or/c #f exact-positive-integer?)
+        #:name (or/c #f string?)
+        #:type (or/c #f record-type/c)
+        #:id (or/c #f string?))
+       (listof xexpr?))
   (let loop ([max-items max-items]
              [name name]
              [type type]
@@ -126,9 +130,9 @@
     (define qp (dict->form-urlencoded d))
     (define p (string-append "/2012-02-29" zone-id "/rrset?" qp))
     (define u (endpoint->uri (r53-endpoint) p))
-    (define h (date+authorize '()))
+    (define h (date+authorize "GET" u '() #""))
     (define x (call/input-request "1.1" "GET" u h
-                                  (lambda (in h)
+                                  (λ (in h)
                                     (check-response in h)
                                     (read-entity/xexpr in h))))
     (define rs (or (tags x 'ResourceRecordSet) '()))
@@ -146,14 +150,16 @@
 ;; http://docs.amazonwebservices.com/Route53/latest/APIReference/API_ChangeResourceRecordSets.html.
 ;; Poor cost:benefit to wrap the XML permutations in structs.
 (define/contract (change-resource-record-sets zone-id changes)
-  (string? xexpr? . -> . xexpr?)
+  (-> string? xexpr? xexpr?)
   (define p (string-append "/2012-02-29" zone-id "/rrset"))
   (define u (endpoint->uri (r53-endpoint) p))
-  (define h (date+authorize (hash 'Content-Type "application/xml")))
   (define bstr (string->bytes/utf-8 (xexpr->string changes)))
-  (displayln bstr)
+  (define h (date+authorize "GET"
+                            u
+                            (hasheq 'Content-Type "application/xml")
+                            bstr))
   (call/output-request "1.1" "POST" u bstr (bytes-length bstr) h
-                       (lambda (in h)
+                       (λ (in h)
                          (check-response in h)
                          (read-entity/xexpr in h))))
 
@@ -172,14 +178,13 @@
 ;;                                  (ResourceRecords
 ;;                                   (ResourceRecord
 ;;                                    (Value "1.2.3.4")))))))))
-   
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
   (require rackunit
+           "keys.rkt"
            "tests/data.rkt")
   (when (test-data-exists?)
-    (test-case
+   (test-case
      "Route53 create/delete hosted zone"
      (ensure-have-keys)
      (define x (create-hosted-zone (test/domain.com)
