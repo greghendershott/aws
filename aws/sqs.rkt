@@ -5,83 +5,77 @@
          "util.rkt"
          "keys.rkt"
          "exn.rkt"
-         "post.rkt")
+         "post.rkt"
+         "sigv4.rkt")
 
-(define sqs-endpoint (make-parameter
-                      (endpoint "sqs.us-east-1.amazonaws.com" #f)))
-(provide sqs-endpoint)
+(define sqs-endpoint
+  (make-parameter (endpoint "sqs.us-east-1.amazonaws.com" #f)))
+(define sqs-region
+  (make-parameter "us-east-1"))
 
-(define/contract/provide (sqs q-uri params [result-proc values])
-  (((or/c #f string?)
-    (listof (list/c symbol? string?)))
-   ((xexpr? . -> . list?)) . ->* .
-   list?)
+(provide (contract-out [sqs-endpoint (parameter/c endpoint?)]
+                       [sqs-region (parameter/c string?)]))
+
+(define/contract/provide (sqs uri params [result-proc values])
+  (->* (string?
+        (listof (list/c symbol? string?)))
+       ((-> xexpr? list?))
+       list?)
   (ensure-have-keys)
-  (define (uri->host&path uri)
-    (if q-uri
-        (values (let-values ([(s h p) (uri->scheme&host&port q-uri)])
-                  h)
-                (let-values ([(p h) (uri&headers->path&header q-uri '())])
-                  p))
-        (values (endpoint->host:port (sqs-endpoint))
-                "/")))
-  (define-values (host path) (uri->host&path q-uri))
-  (define common-params
-    `((AWSAccessKeyId ,(public-key))
-      (SignatureMethod "HmacSHA256")
-      (SignatureVersion "2")
-      (Timestamp ,(timestamp))
-      (Version "2011-10-01")))
-  (define all-params (sort (append params common-params)
-                           (lambda (a b)
-                             (string<? (symbol->string (car a))
-                                       (symbol->string (car b))))))
-  (define str-to-sign
-    (string-append "POST" "\n"
-                   host "\n"
-                   path "\n"
-                   (dict->form-urlencoded all-params)))
-  (define signature (sha256-encode str-to-sign))
-  (define signed-params (append all-params `((Signature ,signature))))
-  (define head
-    (hash 'Content-Type "application/x-www-form-urlencoded; charset=utf-8"))
-  (define uri (string-append "http://" host path))
-  (define x (post-with-retry uri signed-params head))
-  (append (result-proc x)
-          ;; If a NextToken element in the response XML, we need to
-          ;; call again to get more values.
-          (match (tags x 'NextToken)
-            [(list `(NextToken () ,token))
-             (sqs q-uri
-                  (set-next-token params token)
-                  result-proc)]
-             [else '()])))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (let* ([date (seconds->gmt-8601-string 'basic (current-seconds))]
+         [params (append params
+                         `((AWSAccessKeyId ,(public-key))
+                           (SignatureMethod "HmacSHA256")
+                           (SignatureVersion "4")
+                           (Timestamp ,date)
+                           (Version "2011-10-01")))]
+         [body (string->bytes/utf-8 (dict->form-urlencoded params))]
+         [heads (hasheq 'Host (endpoint-host (sqs-endpoint))
+                        'Date date
+                        'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
+         [heads (dict-set* heads
+                           "Authorization"
+                           (aws-v4-authorization
+                            "POST"
+                            uri
+                            heads
+                            (sha256-hex-string body)
+                            (sqs-region)
+                            "sqs"))]
+         [x (post-with-retry uri params heads)])
+    (append (result-proc x)
+            ;; If a NextToken element in the response XML, we need to
+            ;; call again to get more values.
+            (match (tags x 'NextToken)
+              [(list `(NextToken () ,token))
+               (sqs uri
+                    (set-next-token params token)
+                    result-proc)]
+              [_ '()]))))
 
 (define/contract/provide (create-queue name)
-  (string? . -> . string?)
-  (first-tag-value (sqs #f
+  (-> string? string?)
+  (first-tag-value (sqs (endpoint->uri (sqs-endpoint) "/")
                         `((Action "CreateQueue")
-                          (QueueName "test")))
+                          (QueueName ,name)))
                    'QueueUrl))
 
 (define/contract/provide (delete-queue q-uri)
-  (string? . -> . void?)
+  (-> string? void?)
   (void (sqs q-uri
              `((Action "DeleteQueue")))))
 
 (define/contract/provide (list-queues)
   (-> (listof string?))
-  (sqs #f
+  (sqs (endpoint->uri (sqs-endpoint) "/")
        `((Action "ListQueues"))
        (lambda (x) (map third (tags x 'QueueUrl)))))
 
 (define/contract/provide (get-queue-uri name)
-  (string? . -> . string?)
-  (first-tag-value (sqs #f
+  (-> string? string?)
+  (first-tag-value (sqs (endpoint->uri (sqs-endpoint) "/")
                         `((Action "GetQueueUrl")
-                          (QueueName "test")))
+                          (QueueName ,name)))
                    'QueueUrl))
 
 (define/contract/provide (send-message q-uri body [delay-seconds #f])
@@ -127,13 +121,13 @@
   (first xsm))
 
 (define/contract/provide (delete-message q-uri receipt-handle)
-  (string? string? . -> . void?)
+  (-> string? string? void?)
   (void (sqs q-uri
              `((Action "DeleteMessage")
                (ReceiptHandle ,receipt-handle)))))
 
 (define/contract/provide (get-queue-attributes q-uri)
-  (string? . -> . (listof (list/c symbol? string?)))
+  (-> string? (listof (list/c symbol? string?)))
   (sqs q-uri
        '((Action "GetQueueAttributes")
          (AttributeName.1 "All"))
@@ -141,13 +135,11 @@
          (map attribute-xexpr->attrib-pair (tags x 'Attribute)))))
 
 (define/contract/provide (change-message-visibility q-uri receipt-handle timeout)
-  (string? string? exact-nonnegative-integer? . -> . void?)
+  (-> string? string? exact-nonnegative-integer? void?)
   (void (sqs q-uri
              `((Action "ChangeMessageVisibility")
                (ReceiptHandle ,receipt-handle)
                (VisibilityTimeout ,(number->string timeout))))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (module+ test
   (require rackunit

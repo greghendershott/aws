@@ -151,7 +151,7 @@
   (define (value x)
     (match x
       [(list v) (value v)]              ;permit [k v] not just [k . v]
-      [(var v) (format "~a" v)]))
+      [v        (format "~a" v)]))
   (string-join (for/list ([(k v) (in-dict xs)])
                    (format "~a=~a"
                            k
