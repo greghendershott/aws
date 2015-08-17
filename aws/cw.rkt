@@ -13,7 +13,7 @@
 (define cw-endpoint
  (make-parameter (endpoint "monitoring.us-east-1.amazonaws.com" #t)))
 (define cw-region
- (make-parameter "us-east-1.amazonaws.com"))
+ (make-parameter "us-east-1"))
 
 ;; core procedure to make CloudWatch requests
 (define/contract (cw params [result-proc values])
