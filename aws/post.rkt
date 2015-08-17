@@ -32,7 +32,7 @@
               (sleep sleep-time)
               (post-with-retry uri xs-post-data heads (add1 try)))
             (error 'post-with-retry "too many 503 retries; giving up"))]
-       [else
+       [_
         (raise (header&response->exn:fail:aws
                 h e (current-continuation-marks)))]))))
 

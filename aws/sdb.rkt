@@ -40,15 +40,15 @@
    ((and/c integer? (between/c 1 100)))
    . ->* . attribs/c)
   (sdb `((Action "ListDomains"))
-       (lambda (x)
-         (map (lambda (i) (list (first i) (third i)))
+       (λ (x)
+         (map (λ (i) (list (first i) (third i)))
               (tags x 'DomainName)))))
 
 (define/contract/provide (domain-metadata domain-name)
   (string? . -> . attribs/c)
   (sdb `((Action "DomainMetadata")
          (DomainName ,domain-name))
-       (lambda (x)
+       (λ (x)
          ;; Response includes:
          ;;   ((DomainMetadataResult () (k0 () v0) (k1 () v1) ... ))
          (match (cddar (tags x 'DomainMetadataResult))
@@ -83,11 +83,12 @@
                      item-name
                      (get-attributes domain-name
                                      item-name)))
+
 (define/contract/provide (select expr)
   (string? . -> . (listof attribs/c))
   (sdb `((Action "Select")
          (SelectExpression ,expr))
-       (lambda (x)
+       (λ (x)
          (for/list ([i (in-list (tags x 'Item))])
              (cons (list 'ItemName (third (third i)))
                    (map attribute-xexpr->attrib-pair
@@ -114,8 +115,8 @@
 (define/contract (attributes->query-params al)
   (attribs/c . -> . any #| attribs/c |#)
   (for/fold ([xs '()])
-      ([s (in-list al)]
-       [n (in-naturals 1)])
+            ([s (in-list al)]
+             [n (in-naturals 1)])
     (define-values (name value replace?)
       (match s
         [(list name value) (values name value #f)]
@@ -134,14 +135,14 @@
 (define/contract (batch-attributes->query-params bal)
   ((listof (cons/c string? attribs/c)) . -> . attribs/c)
   (for/fold ([xs '()])
-      ([item (in-list bal)]
-       [n-item (in-naturals 1)])
+            ([item (in-list bal)]
+             [n-item (in-naturals 1)])
     (append xs
             (list (list (string->symbol (format "Item.~a.ItemName" n-item))
                         (car item)))
             (for/fold ([xs '()])
-                ([attr (in-list (cdr item))]
-                 [n-attr (in-naturals 1)])
+                      ([attr (in-list (cdr item))]
+                       [n-attr (in-naturals 1)])
               (define-values (name value replace?)
                 (match attr
                   [(list name value) (values name value #f)]
@@ -195,7 +196,7 @@
       (Timestamp ,(timestamp))
       (Version "2009-04-15")))
   (define all-params (sort (append params common-params)
-                           (lambda (a b)
+                           (λ (a b)
                              (string<? (symbol->string (car a))
                                        (symbol->string (car b))))))
   (define str-to-sign
@@ -241,14 +242,14 @@
 (define/contract (attribs-hash/c->attribs/c attribs-hash/c)
   (attribs-hash/c . -> . attribs/c)
   (for/fold ([xs '()])
-      ([(k v) (in-hash attribs-hash/c)])
+            ([(k v) (in-hash attribs-hash/c)])
     (append xs
             (for/list ([v (in-set v)]
                        [n (in-naturals 0)])
                 (if (zero? n)
                     (list k v 'replace)
                     (list k v))))))
-                    
+
 (define/contract (attribs/c->attribs-hash/c xs)
   (attribs/c . -> . attribs-hash/c)
   (let ([h (make-hash)])
@@ -276,7 +277,7 @@
   (string? . -> . (listof item?))
   (sdb `((Action "Select")
          (SelectExpression ,expr))
-       (lambda (x)
+       (λ (x)
          (for/list ([i (in-list (tags x 'Item))])
              (item (third (third i)) ; ItemName value
                    (attribs/c->attribs-hash/c
@@ -295,12 +296,12 @@
 (define/provide (int<->str [width 5] [offset 0] [pad-char #\0])
   (values
    ;; int->str
-   (lambda (n)
+   (λ (n)
      (define s (number->string (+ n offset)))
      (define pad (make-string (- width (string-length s)) pad-char))
      (string-append pad s))
    ;; str->int
-   (lambda (s)
+   (λ (s)
      (define n (string->number s))
      (- n offset))))
 
@@ -312,7 +313,7 @@
   (syntax-case stx ()
     [(_ name width ofs)
      (let ([make-id
-            (lambda (template . ids)
+            (λ (template . ids)
               (let ([str (apply format template (map syntax->datum ids))])
                 (datum->syntax stx (string->symbol str))))])
        (with-syntax ([int->str (make-id "int->str/~a" #'name)]
@@ -381,28 +382,28 @@
     (test-case
      "domains"
      (read-keys)
-     (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
-     (check-not-exn (lambda () (create-domain (test/domain))))
+     (check-not-exn (λ () (delete-domain (test/domain)))) ;in case failed prev
+     (check-not-exn (λ () (create-domain (test/domain))))
      (sleep 1)
      (check-true
       (member? `(DomainName ,(test/domain)) (list-domains)))
      (check-true
       (member? `(ItemCount "0") (domain-metadata (test/domain))))
-     (check-not-exn (lambda () (delete-domain (test/domain)))))
+     (check-not-exn (λ () (delete-domain (test/domain)))))
 
     (test-case
      "attributes"
-     (check-not-exn (lambda () (delete-domain (test/domain)))) ;in case failed prev
-     (check-not-exn (lambda () (create-domain (test/domain))))
+     (check-not-exn (λ () (delete-domain (test/domain)))) ;in case failed prev
+     (check-not-exn (λ () (create-domain (test/domain))))
      (define attribs '((BPM "130")
                        (Genre "Disco")))
-     (check-not-exn (lambda () (put-attributes (test/domain) "item" attribs)))
+     (check-not-exn (λ () (put-attributes (test/domain) "item" attribs)))
      (sleep 1)
      (check-equal? (get-attributes (test/domain) "item")
                    attribs)
      (check-equal? (select (string-append "select Genre from " (test/domain)))
                    `(((ItemName "item") (Genre "Disco"))))
-     (check-not-exn (lambda () (delete-attributes (test/domain) "item" attribs)))
+     (check-not-exn (λ () (delete-attributes (test/domain) "item" attribs)))
      (sleep 1)
      (check-equal? (get-attributes (test/domain) "item")
                    '())
@@ -410,7 +411,7 @@
      (define cnt 25)
      (for ([n (in-range cnt)])
        (check-not-exn
-        (lambda ()
+        (λ ()
           (put-attributes (test/domain)
                           (format "Item~a" n)
                           `((n ,(format "~a" n)))))))
@@ -421,7 +422,7 @@
                    `(((ItemName "Domain") (Count ,(format "~a" cnt)))))
      (for ([n (in-range cnt)])
        (check-not-exn
-        (lambda ()
+        (λ ()
           (delete-attributes (test/domain)
                              (format "Item~a" n)
                              `((n ,(format "~a" n)))))))
@@ -439,7 +440,7 @@
        (for/list ([n (in-range batch-item-count)])
          (cons (format "item~a" n)
                (batch-attribs n))))
-     (check-not-exn (lambda () (batch-put-attributes (test/domain) (batch-items))))
+     (check-not-exn (λ () (batch-put-attributes (test/domain) (batch-items))))
      (sleep 10)
      (for ([n (in-range batch-item-count)])
        (check-equal? (sort ;order from SDB is undetermined
@@ -447,7 +448,7 @@
                       attrib<?)
                      (sort (batch-attribs n) attrib<?)))
      (check-not-exn
-      (lambda ()
+      (λ ()
         (batch-delete-attributes (test/domain) (batch-items))))
      (sleep 10)
      (for ([n (in-range batch-item-count)])
@@ -457,7 +458,7 @@
      (define attribs/hash (hash 'bpm   (set "100")
                                 'genre (set "Rock" "Metal")))
      (check-not-exn
-      (lambda () (put-attributes-hash (test/domain) "itemHash" attribs/hash)))
+      (λ () (put-attributes-hash (test/domain) "itemHash" attribs/hash)))
      (sleep 1)
      (check-true
       (attribs-hash=? (get-attributes-hash (test/domain) "itemHash")
@@ -468,30 +469,13 @@
                             (test/domain))))
               (item "itemHash" attribs/hash)))
 
-     (check-not-exn (lambda () (delete-domain (test/domain)))))
+     (check-not-exn (λ () (delete-domain (test/domain)))))
 
     (test-case
      "400 errors"
-     ;; Check it raises an exn:fail:aws when domain doesn't exist
-     (define bad-domain-msg "The specified domain does not exist.")
-     (define-syntax-rule (400-error? expr)
-       (check-true
-        (with-handlers
-            ([exn:fail:aws?
-              (lambda (exn)
-                (match exn
-                  [(exn:fail:aws _
-                                 _
-                                 400
-                                 "Bad Request"
-                                 "NoSuchDomain"
-                                 "The specified domain does not exist.")
-                   #t]
-                  [else #f]))])
-          ;; We expect expr to raise an exception. Return #f if it doesn't
-          (begin expr #f))))
-     (400-error? (select "SELECT Count(*) FROM barf"))
-     (400-error? (select "SELECT Count(*) FROM barf"))
-     (400-error? (put-attributes "barf" "item" '((key "val"))))
-     (400-error? (get-attributes "barf" "item"))
-     (400-error? (delete-attributes "barf" "item" '((key "val")))))))
+     (define px #px"HTTP 400 \"Bad Request\". AWS Code=\"NoSuchDomain\" Message=\"The specified domain does not exist.\"")
+     (check-exn px (λ () (select "SELECT Count(*) FROM barf")))
+     (check-exn px (λ () (select "SELECT Count(*) FROM barf")))
+     (check-exn px (λ () (put-attributes "barf" "item" '((key "val")))))
+     (check-exn px (λ () (get-attributes "barf" "item")))
+     (check-exn px (λ () (delete-attributes "barf" "item" '((key "val"))))))))
