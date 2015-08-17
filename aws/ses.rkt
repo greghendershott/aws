@@ -1,9 +1,15 @@
-#lang racket
+#lang racket/base
 
-(require http/head
+(require (for-syntax racket/base)
+         http/head
          http/request
          net/base64
-         xml
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/list
+         racket/match
+         xml/xexpr
          "exn.rkt"
          "keys.rkt"
          "sigv4.rkt"

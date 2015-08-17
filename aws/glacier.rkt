@@ -1,8 +1,13 @@
-#lang racket
+#lang racket/base
 
 (require http
          json
          net/head
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/function
+         racket/match
          sha
          "exn.rkt"
          "sigv4.rkt"
@@ -634,6 +639,7 @@
 
 (module+ test
   (require rackunit
+           racket/port
            "sns.rkt"
            "tests/data.rkt")
   (when (test-data-exists?)

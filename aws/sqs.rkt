@@ -1,12 +1,15 @@
-#lang racket
+#lang racket/base
 
-(require xml
-         http/request
-         "util.rkt"
+(require http/request
+         racket/contract/base
+         racket/dict
+         racket/list
+         racket/match
+         xml/xexpr
          "keys.rkt"
-         "exn.rkt"
          "post.rkt"
-         "sigv4.rkt")
+         "sigv4.rkt"
+         "util.rkt")
 
 (define sqs-endpoint
   (make-parameter (endpoint "sqs.us-east-1.amazonaws.com" #f)))

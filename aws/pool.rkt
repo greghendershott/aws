@@ -1,16 +1,15 @@
-#lang racket
+#lang racket/base
 
 (require racket/async-channel
-         "util.rkt"
-         )
+         racket/contract/base
+         racket/contract/region)
 
 (provide (struct-out pool)
          make-worker-pool
          delete-worker-pool
          with-worker-pool
          add-job
-         get-results
-         )
+         get-results)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

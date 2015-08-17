@@ -1,9 +1,13 @@
-#lang racket
+#lang racket/base
 
-(require xml
-         net/base64
+(require http/head
          http/request
-         http/head
+         net/base64
+         racket/contract/base
+         racket/dict
+         racket/match
+         racket/math
+         xml/xexpr
          "exn.rkt"
          "util.rkt")
 

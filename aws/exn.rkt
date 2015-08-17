@@ -1,10 +1,13 @@
-#lang racket
+#lang racket/base
 
-(require http/head
+(require (for-syntax racket/base)
+         http/head
          http/request
          json
          net/head
-         xml
+         racket/contract/base
+         racket/match
+         xml/xexpr
          "util.rkt")
 
 (struct exn:fail:aws exn:fail

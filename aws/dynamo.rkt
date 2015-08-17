@@ -1,7 +1,11 @@
-#lang racket
+#lang racket/base
 
-(require http/request
+(require (for-syntax racket/base)
+         http/request
          json
+         racket/contract/base
+         racket/contract/region
+         racket/dict
          "exn.rkt"
          "sigv4.rkt"
          "util.rkt")

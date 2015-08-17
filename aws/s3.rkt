@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 
 (require file/md5
          http/head
@@ -6,6 +6,14 @@
          net/base64
          net/head
          net/uri-codec
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/format
+         racket/list
+         racket/match
+         racket/port
+         racket/string
          xml
          "exn.rkt"
          "keys.rkt"
@@ -994,7 +1002,7 @@
 
   (when (test-data-exists?)
     (for ([timeout '(0 10)])
-      (printf "=== Test using connection pool timeout of ~a sec ===\n" pool)
+      (printf "=== Test using connection pool timeout of ~a sec ===\n" timeout)
       (parameterize ([current-pool-timeout timeout])
         (for ([path? '(#f #t)])
           (parameterize ([s3-path-requests? path?])

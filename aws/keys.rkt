@@ -1,6 +1,10 @@
-#lang racket
+#lang racket/base
 
 (require net/base64
+         racket/contract/base
+         racket/contract/region
+         racket/file
+         racket/match
          sha
          "util.rkt")
 

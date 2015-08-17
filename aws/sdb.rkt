@@ -1,10 +1,15 @@
-#lang racket
+#lang racket/base
 
-(require xml
-         "util.rkt"
+(require (for-syntax racket/base)
+         racket/contract/base
+         racket/contract/region
+         racket/list
+         racket/match
+         racket/set
+         xml/xexpr
          "keys.rkt"
-         "exn.rkt"
-         "post.rkt")
+         "post.rkt"
+         "util.rkt")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Wrappers for the core `sdb' function.
@@ -328,6 +333,7 @@
 
 (module+ test
   (require rackunit
+           "exn.rkt"
            "tests/data.rkt")
 
   (test-case

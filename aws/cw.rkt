@@ -1,7 +1,16 @@
-#lang racket
+#lang racket/base
 
-(require http/request
-         xml
+(require (for-syntax racket/base)
+         http/request
+         racket/bool
+         racket/contract/base
+         racket/contract/combinator
+         racket/contract/region
+         racket/dict
+         racket/list
+         racket/match
+         racket/string
+         xml/xexpr
          "keys.rkt"
          "post.rkt"
          "sigv4.rkt"

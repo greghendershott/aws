@@ -1,4 +1,16 @@
-#lang racket
+#lang racket/base
+
+(require (for-syntax racket/base)
+         net/uri-codec
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/list
+         racket/match
+         racket/port
+         racket/string
+         xml/xexpr
+         "take.rkt")
 
 (module+ test
   (require rackunit))
@@ -60,7 +72,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require xml)
 (define/contract/provide (tags xpr tag [direct-child-of #f])
   ((xexpr/c symbol?) ((or/c #f symbol?)) . ->* . (listof xexpr/c))
   ;; Given an xexpr return a list of all the elements starting with
@@ -126,8 +137,6 @@
 ;; Percent-encoding. Racket net/uri-codec does RFC 2396 but we want
 ;; RFC 3986.
 
-(require net/uri-codec)
-
 (define (percent-encode c)
   (string-upcase (format "%~x" (char->integer c))))
 
@@ -178,8 +187,6 @@
                  path))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(require "take.rkt")
 
 ;; Much like `hash' lets you supply the pairs as a flat list, `alist'
 ;; lets you do so for an association list. Saves some tedious typing

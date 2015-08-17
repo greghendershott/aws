@@ -1,8 +1,14 @@
-#lang racket
+#lang racket/base
 
 (require http
          net/uri-codec
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/list
+         racket/match
          racket/set
+         racket/string
          sha
          "keys.rkt"
          "util.rkt")
@@ -167,6 +173,7 @@
 
 (module+ test
   (require rackunit
+           racket/file
            racket/runtime-path
            http/head
            "tests/data.rkt")

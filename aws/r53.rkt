@@ -1,6 +1,10 @@
-#lang racket
+#lang racket/base
 
 (require http/request
+         racket/contract/base
+         racket/contract/region
+         racket/dict
+         racket/match
          xml
          "exn.rkt"
          "sigv4.rkt"

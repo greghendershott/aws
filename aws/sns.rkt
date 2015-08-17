@@ -1,8 +1,13 @@
-#lang racket
+#lang racket/base
 
 (require http/head
          http/request
-         xml
+         racket/contract/base
+         racket/dict
+         racket/list
+         racket/match
+         racket/string
+         xml/xexpr
          "exn.rkt"
          "keys.rkt"
          "post.rkt"

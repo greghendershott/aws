@@ -1,4 +1,7 @@
-#lang racket
+#lang racket/base
+
+(require racket/contract/base
+         racket/contract/region)
 
 (provide in-take)
 
@@ -94,7 +97,7 @@
                       (cons k v))))
    ;; Missing values filled in
    (check-equal? (for/list ([(k v) (in-take '(a "1" b "2" c) 2
-                                            (const "FILL"))])
+                                            (λ _ "FILL"))])
                    (cons k v))
                  '([a . "1"][b . "2"][c . "FILL"]))
    ;; Fill function is passed expected "index"
