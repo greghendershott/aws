@@ -1,15 +1,56 @@
 #lang racket
 
-(require net/base64
-         net/url
-         net/uri-codec
-         xml
+(require http/head
          http/request
-         http/head
-         "util.rkt"
-         "keys.rkt"
+         net/base64
+         xml
          "exn.rkt"
-         )
+         "keys.rkt"
+         "sigv4.rkt"
+         "util.rkt")
+
+(define ses-endpoint
+  (make-parameter (endpoint "email.us-east-1.amazonaws.com" #t)))
+(define ses-region
+  (make-parameter "us-east-1"))
+
+(provide (contract-out [ses-endpoint (parameter/c endpoint?)]
+                       [ses-region (parameter/c string?)]))
+
+;; The low-level function used by other functions to make requests
+(define/contract/provide (request params)
+  (-> (listof (list/c symbol? string?)) xexpr?)
+  (ensure-have-keys)
+  (let* ([uri (endpoint->uri (ses-endpoint) "/")]
+         [date (seconds->gmt-8601-string 'basic (current-seconds))]
+         [body (string->bytes/utf-8 (dict->form-urlencoded params))]
+         [heads (hasheq 'Host (endpoint-host (ses-endpoint))
+                        'Date date
+                        'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
+         [heads (dict-set* heads
+                           "Authorization"
+                           (aws-v4-authorization
+                            "POST"
+                            uri
+                            heads
+                            (sha256-hex-string body)
+                            (ses-region)
+                            "ses"))])
+    (call/output-request
+     "1.1" "POST" uri body (bytes-length body) heads
+     (λ (in h)
+       (define e (read-entity/xexpr in h))
+       (match (extract-http-code h)
+         [200 e]
+         [_
+          (match (header&response->exn:fail:aws h e (current-continuation-marks))
+            [(and exn
+                  (exn:fail:aws _ _ 400 _ "Throttling" "Maximum sending rate exceeded."))
+             (define secs (add1 (random 15)))
+             (log-aws-warning (format "~a. Will retry in ~a seconds." exn secs))
+             (sleep secs)
+             (request params)]
+            [exn (raise exn)])])))))
 
 (define/contract/provide (send-email
                           #:from from
@@ -22,20 +63,18 @@
                           #:return-path [return-path from]
                           #:html? [html? #f]
                           #:charset [charset "UTF-8"])
-  (( ;; required
-    #:from string?
+  (->*
+   (#:from string?
     #:to (listof string?)
     #:subject string?
-    #:body string?
-    )
-   ( ;; optional
-    #:cc (listof string?)
+    #:body string?)
+   (#:cc (listof string?)
     #:bcc (listof string?)
     #:reply-to (listof string?)
     #:return-path string?
     #:html? boolean?
-    #:charset string?
-    ) . ->* . void)
+    #:charset string?)
+   void)
   (request
    `((Action "SendEmail")
      (Source ,from)
@@ -50,7 +89,7 @@
   (void))
 
 (define/contract (addresses->heads prefix xs)
-  (string? (listof string?) . -> . (listof (list/c symbol? string?)))
+  (-> string? (listof string?) (listof (list/c symbol? string?)))
   (for/list ([x (in-list xs)]
              [n (in-naturals 1)])
       (list (string->symbol (format "~a.~a" prefix n)) x)))
@@ -58,7 +97,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract/provide (send-raw-email mail-from rcpt-to raw-message)
-  (string? (listof string?) string? . -> . xexpr?)
+  (-> string? (listof string?) string? xexpr?)
   (log-aws-debug raw-message)
   (define source ;use Return-Path if present else MAIL FROM
     (match raw-message
@@ -74,13 +113,13 @@
   (bytes->string/utf-8 (base64-encode (string->bytes/utf-8 s))))
 
 (define/contract/provide (verify-email-address s)
-  (string? . -> . void)
+  (-> string? void)
   (request `((Action "VerifyEmailAddress")
              (EmailAddress ,s)))
   (void))
 
 (define/contract/provide (delete-verified-email-address s)
-  (string? . -> . void)
+  (-> string? void)
   (request `((Action "DeleteVerifiedEmailAddress")
              (EmailAddress ,s)))
   (void))
@@ -119,54 +158,6 @@
 (define (str x t)
   (last (first (tags x t))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define ses-endpoint (make-parameter
-                      (endpoint "email.us-east-1.amazonaws.com" #t)))
-(provide ses-endpoint)
-
-;; The low-level function used by other functions to make requests to
-;; SES.
-(define/contract/provide (request params)
-  ((listof (list/c symbol? string?)) . -> . xexpr?)
-  (ensure-have-keys)
-  (define date-str (seconds->gmt-string))
-  (define data (string->bytes/utf-8 (dict->form-urlencoded params)))
-  (define heads
-    (dict-set*
-     (make-auth-header date-str)
-     'Date date-str
-     'Content-Type "application/x-www-form-urlencoded; charset=utf-8"))
-  (call/output-request
-   "1.1" "POST" (endpoint->uri (ses-endpoint) "/") data #f heads
-   (lambda (in h)
-     (define e (read-entity/xexpr in h))
-     (match (extract-http-code h)
-       [200 e]
-       [else
-        (define exn
-          (header&response->exn:fail:aws h e (current-continuation-marks)))
-        (match exn
-          [(exn:fail:aws _ _ 400 _ "Throttling" "Maximum sending rate exceeded.")
-           (define secs (add1 (* (random) 15))) ;1-16 seconds
-           (log-aws-warning (format "~a. Will retry in ~a seconds." exn secs))
-           (sleep secs)
-           (request params)]
-          [else (raise exn)])]))))
-
-(define/contract (make-auth-header date-str)
-  (string? . -> . dict?)
-  ;; X-Amzn-Authorization: AWS3-HTTPS AWSAccessKeyId=<AccessKeyID>,\
-  ;;   Algorithm=HmacSHA256,Signature=<Signature>
-  (hash 'X-Amzn-Authorization
-        (string-append "AWS3-HTTPS AWSAccessKeyId="
-                       (public-key)
-                       ",Algorithm=HmacSHA256,Signature="
-                       (sha256-encode date-str))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; test
-
 (module+ test
   (require rackunit
            "tests/data.rkt")
@@ -192,7 +183,7 @@
                  #:to (list (test/recipient))
                  #:subject "test good address"
                  #:body "test good address"))
-    
+
     (test-case
      "400 errors"
      (400-error? "InvalidParameterValue"
