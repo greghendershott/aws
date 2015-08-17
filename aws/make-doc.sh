@@ -1,1 +1,0 @@
-scribble --markdown manual.scrbl

@@ -16,22 +16,20 @@ Web Services](http://aws.amazon.com/documentation/):
 
 * [CloudWatch monitoring](http://docs.amazonwebservices.com/AmazonCloudWatch/latest/DeveloperGuide/Welcome.html).
 
-* [Glacier
-  archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html). _New in v1.3, 2012-08-30_
+* [Glacier archiving](http://docs.amazonwebservices.com/amazonglacier/latest/dev/introduction.html).
 
-* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).  _New in v1.3, 2012-08-30_
+* [Authorization signature version 4](http://docs.amazonwebservices.com/general/latest/gr/signature-version-4.html).
 
-* [Route 53](http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html). _New in v1.4, 2012-11-26_
+* [Route 53](http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html).
 
-* [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html). _New in v1.4, 2012-11-26_
+* [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html).
 
 
 Documentation
 =============
 
-* [HTML format on pkg-build.racket-lang.org](http://pkg-build.racket-lang.org/doc/aws/index.html).
+* [HTML format on pkg-build.racket-lang.org](http://pkg-build.racket-lang.org/doc/rackjure@rackjure/index.html).
 
-* [Markdown format on GitHub](https://github.com/greghendershott/aws/blob/master/aws/manual.md).
 
 Requirements
 ============
@@ -40,11 +38,12 @@ Requirements
   experiment but are concerned about cost, keep in mind that AWS has a
   "free tier" for certain usage.)
 
-* My `http` library. Install: `raco pkg install
-  http`. [Source](https://github.com/greghendershott/http).
+* My `http` library. Install: `raco pkg install http`.
+  [Source](https://github.com/greghendershott/http).
 
-* My `sha` library. Install: `raco pkg install
-  sha`. [Source](https://github.com/greghendershott/sha)
+* My `sha` library. Install: `raco pkg install sha`.
+  [Source](https://github.com/greghendershott/sha)
+
 
 Unit tests
 ==========

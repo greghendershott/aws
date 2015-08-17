@@ -1,4 +1,5 @@
-planet-docs/*
-*.plt
 .DS_Store
 compiled/
+htmldocs/
+doc/
+*~

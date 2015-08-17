@@ -1,19 +1,19 @@
 #lang scribble/manual
 
-@(require (for-label racket)
-          (for-label net/head)
-          (for-label json)
-          (for-label "cw.rkt")
-          (for-label "exn.rkt")
-          (for-label "keys.rkt")
-          (for-label "s3.rkt")
-          (for-label (rename-in "sdb.rkt" [delete-item sdb-delete-item]))
-          (for-label "ses.rkt")
-          (for-label "sns.rkt")
-          (for-label "sqs.rkt")
-          (for-label "r53.rkt")
-          (for-label "dynamo.rkt")
-          (for-label "util.rkt"))
+@(require (for-label racket
+                     net/head
+                     json
+                     aws/cw
+                     aws/dynamo
+                     aws/exn
+                     aws/keys
+                     aws/s3
+                     (rename-in aws/sdb [delete-item sdb-delete-item])
+                     aws/ses
+                     aws/sns
+                     aws/sqs
+                     aws/r53
+                     aws/util))
 
 @title{Amazon Web Services}
 
@@ -241,19 +241,26 @@ restrictions for DNS -- for which @racket[(valid-bucket-name? name
 
 @subsection{Endpoint}
 
-@defparam[s3-host v string?]{
+@defparam[s3-host v string? #:value "s3.amazonaws.com"]{
 
-The hostname used for the S3 REST API. Defaults to
-@racket["s3.amazonaws.com"]. May be any value from
+The hostname used for the S3 REST API. May be any value from
 @hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
 "the Endpoint column"].
 
 }
 
-@defparam[s3-scheme v (or/c "http" "https")]{
+@defparam[s3-region v string? #:value "us-east-1"]{
 
-The scheme used for the S3 REST API. Defaults to @tt{"http"}. Set to
-@tt{"https"} to connect using SSL.
+The region used for the S3 REST API. Should be a value from
+@hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
+"the Region column"] of the same row as the value for @racket[s3-host].
+
+}
+
+
+@defparam[s3-scheme v (or/c "http" "https") #:value "http"]{
+
+The scheme used for the S3 REST API.
 
 }
 
@@ -299,7 +306,8 @@ Example:
 @defproc[(uri&headers
 [b+p string?]
 [method string?]
-[headers dict?]
+[headers dict? '()]
+[body #""]
 ) (values string? dict?)]{
 
 Return the URI and headers for which to make an HTTP request to
@@ -915,13 +923,17 @@ occurrence of each unique value).
 
 @subsection{Making requests to SDB}
 
-@defparam[sdb-endpoint v endpoint?]{
+@defparam[sdb-endpoint v endpoint? #:value (endpoint "sdb.amazonaws.com" #t)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"sdb.amazonaws.com" #t)].
+The endpoint for the service.
 
 }
 
+@defparam[sdb-region v string? #:value "us-east-1"]{
+
+The region for the service.
+
+}
 
 @defproc[(create-domain [name string?]) void?]{
 
@@ -1254,10 +1266,15 @@ Please refer to the
 @hyperlink["http://docs.amazonwebservices.com/ses/latest/DeveloperGuide/Welcome.html"
 "SES documentation"] to understand concepts like a verified sending adddress.
 
-@defparam[ses-endpoint v endpoint?]{
+@defparam[ses-endpoint v endpoint? #:value (endpoint "email.us-east-1.amazonaws.com" #t)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"email.us-east-1.amazonaws.com" #t)].
+The endpoint for the service.
+
+}
+
+@defparam[ses-region v string? #:value "us-east-1"]{
+
+The endpoint for the service.
 
 }
 
@@ -1390,16 +1407,15 @@ hostname, your AWS account number, and a name. An example ARN is
 @tt{arn:aws:sns:us-east-1:123456789012:My-Topic}.
 
 
-@defparam[sns-endpoint v endpoint?]{
+@defparam[sns-endpoint v endpoint? #:value (endpoint "sns.us-east-1.amazonaws.com" #f)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"sns.us-east-1.amazonaws.com" #f)].
+The endpoint for the service.
 
 }
 
-@defparam[sns-region v string?]{
+@defparam[sns-region v string? #:value "us-east-1"]{
 
-Set the region for the service. Defaults to @racket["us-east-1"].
+The region for the service.
 
 }
 
@@ -1479,10 +1495,15 @@ then @racket[message] must be valid JSON or SNS will return an error.
 @hyperlink["http://docs.amazonwebservices.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/Welcome.html" "SQS"] provides distributed queues.
 
 
-@defparam[sqs-endpoint v endpoint?]{
+@defparam[sqs-endpoint v endpoint? #:value (endpoint "sqs.us-east-1.amazonaws.com" #f)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"sqs.us-east-1.amazonaws.com" #f)].
+The endpoint for the service.
+
+}
+
+@defparam[sqs-region v string? #:value "us-east-1"]{
+
+The region for the service.
 
 }
 
@@ -1556,13 +1577,11 @@ Change the visibility time of a message already in a queue. }
 @hyperlink["http://docs.amazonwebservices.com/Route53/latest/APIReference/Welcome.html" "Route 53"] provides DNS.
 
 
-@defparam[r53-endpoint v endpoint?]{
+@defparam[r53-endpoint v endpoint? #:value (endpoint "route53.amazonaws.com" #f)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"route53.amazonaws.com" #f)].
+The endpoint for the service.
 
 }
-
 
 @defproc[(create-hosted-zone [name string?][unique string?][comment string? ""]) xexpr?]{
 
@@ -1660,17 +1679,16 @@ Example:
 @hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "Dynamo"] is Amazon's newer "NoSQL" service.
 
 
-@defparam[dynamo-endpoint v endpoint?]{
+@defparam[dynamo-endpoint v endpoint? #:value (endpoint "dynamodb.us-east-1.amazonaws.com" #f)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"dynamodb.us-east-1.amazonaws.com" #f)].
+The endpoint for the service.
 
 }
 
 
-@defparam[dynamo-region v string?]{
+@defparam[dynamo-region v string? #:value "us-east-1"]{
 
-Set the region for the service. Defaults to @racket["us-east-1"].
+The region for the service.
 
 }
 
@@ -1785,16 +1803,15 @@ other metrics procedures, and least of all on alarms and alarm history. (This is
 in line with the overall priority of this library, which is to support
 applications not ``infrastucture.'')
 
-@defparam[cw-endpoint v endpoint?]{
+@defparam[cw-endpoint v endpoint? #:value (endpoint "monitoring.us-east-1.amazonaws.com" #t)]{
 
-Set the endpoint for the service. Defaults to @racket[(endpoint
-"monitoring.us-east-1.amazonaws.com" #t)].
+The endpoint for the service.
 
 }
 
-@defparam[cw-region v string?]{
+@defparam[cw-region v string? #:value "us-east-1"]{
 
-Set the region for the service. Defaults to @racket["us-east-1"].
+The region for the service.
 
 }
 

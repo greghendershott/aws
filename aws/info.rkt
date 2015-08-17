@@ -1,3 +1,3 @@
 #lang setup/infotab
 
-(define scribblings '(("manual.scrbl" () (new-library) "aws")))
+(define scribblings '(("aws.scrbl" ())))
