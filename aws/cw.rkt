@@ -33,7 +33,7 @@
                            (aws-v4-authorization "POST"
                                                  uri
                                                  heads
-                                                 post-data
+                                                 (sha256-hex-string post-data)
                                                  (cw-region)
                                                  "monitoring"))]
          [result (post-with-retry uri params heads)])
