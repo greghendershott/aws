@@ -2,6 +2,7 @@
 
 @(require (for-label racket
                      net/head
+                     http/head
                      json
                      aws/cw
                      aws/dynamo
@@ -461,10 +462,9 @@ which is a list consisting of:
 ) string?]{
 
 Make a @tt{HEAD} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and return the headers as a @racket[string]
-in @racket[net/head] format.
-
-@racket[bucket+path] is the form @racket["bucket/path/to/resource"].
+@racket["bucket/path/to/resource"]) and return the headers as a
+@racket[string] in @racket[net/head] format. You can provide this
+string to @racket[heads-string->dict] from @racket[http/head].
 
 }
 
@@ -616,21 +616,28 @@ You may pass request headers in the optional @racket[heads] argument.
 
 }
 
+@deftogether[(
+  @defproc[(put
+  [bucket+path string?]
+  [writer (output-port . -> . void?)]
+  [data-length exact-nonnegative-integer?]
+  [mime-type string?]
+  [reader (input-port? string? . -> . any/c)]
+  [heads dict? '()]
+  [#:chunk-len chunk-len aws-chunk-len/c aws-chunk-len-default]
+  ) void?]
 
-@defproc[(put
-[bucket+path string?]
-[writer (output-port . -> . void?)]
-[data-length (or/c #f exact-nonnegative-integer?)]
-[mime-type string?]
-[reader (input-port? string? . -> . any/c)]
-[heads dict? '()]
-) void?]{
+  @defthing[aws-chunk-len-minimum (* 8 1024)]
+  @defthing[aws-chunk-len-default (* 64 1024)]
+  @defthing[aws-chunk-len/c ((and/c exact-nonnegative-integer?
+                                    (>=/c aws-chunk-len-minimum)))]
+)]{
 
 @margin-note{Although you may use @racket[put] directly, it is also a building
 block for other procedures that you may find more convenient, such as
 @racket[put/bytes] and @racket[put/file].
 
-To upload more than about 100 MB, see @racket[multipart-put].}
+To upload more than about 100 MB, prefer @racket[multipart-put].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]), using the @racket[writer] procedure to
@@ -654,7 +661,12 @@ Note: If you want a @tt{Content-MD5} request header, you must calculate and
 supply it yourself in @racket[heads]. Supplying this allows S3 to verify the
 upload integrity.
 
-To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+@racket[chunk-len] determines the length of the @tt{Content-Encoding:
+aws-chunked} chunks used to perform
+@hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html" "AWS
+Signature v4 chunked uploads"].
+
+To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
 
 }
@@ -667,7 +679,7 @@ To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
 [heads dict? '()]
 ) void?]{
 
-@margin-note{To upload more than about 100 MB, see @racket[multipart-put].}
+@margin-note{To upload more than about 100 MB, prefer @racket[multipart-put].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]), sending @racket[data] as the request entity
@@ -678,7 +690,7 @@ A @tt{Content-MD5} request header is automatically created from
 @racket[data]. To ensure data integrity, S3 will reject the request if the
 bytes it receives do not match the MD5 checksum.
 
-To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
 
 }
@@ -691,7 +703,7 @@ To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
 [#:mode mode-flag (or/c 'binary 'text) 'binary]
 ) void?]{
 
-@margin-note{For files larger than about 100 MB, see
+@margin-note{For files larger than about 100 MB, prefer
 @racket[multipart-put/file].}
 
 Upload the file @racket[pathname] to @racket[bucket+path].
@@ -720,7 +732,7 @@ header @racket["Content-Disposition:attachment; filename=\"test.txt\""] is
 created.  This is helpful because a web browser that is given the URI for the
 object will prompt the user to download it as a file.
 
-To use reduced redundancy storage, supply @racket[(hash 'x-amz-storage-class
+To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
 
 }
@@ -758,7 +770,8 @@ the @racket[get-part] procedure you supply. In other words, your
 @racket[get-part] procedure is called @racket[num-parts] times, with values
 @racket[(in-range num-parts)].
 
-Each part must be at least 5 MB, except the last part.
+Each part must be at least @racket[s3-multipart-size-minimum], except
+the last part.
 
 The parts are uploaded using a small number of worker threads, to get some
 parallelism and probably better performance.
@@ -766,12 +779,20 @@ parallelism and probably better performance.
 }
 
 
-@defproc[(multipart-put/file
-[bucket+path string?]
-[path path?]
-[#:mime-type mime-type string? #f]
-[#:mode mode-flag (or/c 'binary 'text) 'binary]
-) string?]{
+@deftogether[(
+  @defproc[(multipart-put/file
+  [bucket+path string?]
+  [path path?]
+  [#:mime-type mime-type string? #f]
+  [#:mode mode-flag (or/c 'binary 'text) 'binary]
+  [#:part-size part-size s3-multipart-size/c]
+  ) string?]
+
+  @defthing[s3-multipart-size-minimum (* 5 1024 1024)]
+  @defthing[s3-multipart-size-default (* 5 1024 1024)]
+  @defthing[s3-multipart-size/c (and/c exact-positive-integer?
+                                       (>=/c s3-multipart-size-minimum))]
+)]{
 
 Like @racket[put/file] but uses multipart upload.
 
@@ -799,19 +820,25 @@ Initiate a multipart upload and return an upload ID.
 }
 
 
+@deftogether[(
 @defproc[(upload-part
 [bucket+path string?]
 [upload-id string?]
-[part-number (and/c exact-integer? (between/c 1 10000))]
+[part-number s3-multipart-number/c]
 [bstr bytes?]
-) (cons/c (and/c exact-integer? (between/c 1 10000)) string?)]{
+) (cons/c s3-multipart-number/c string?)]
+
+@defthing[s3-multipart-number/c (and/c exact-integer? (between/c 1 10000))]
+
+)]{
 
 Upload one part for the multipart upload specified by the @racket[upload-id]
 returned from @racket[initiate-multipart-upload].
 
 Note that S3 part numbers start with @racket[1] (not @racket[0]).
 
-@racket[bstr] must be at least 5 MB, unless it's the last part.
+@racket[bstr] must be at least @racket[s3-multipart-size-minimum],
+unless it's the last part.
 
 Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
 part. You will need to supply a list of these, one for each part, to
@@ -823,7 +850,7 @@ part. You will need to supply a list of these, one for each part, to
 @defproc[(complete-multipart-upload
 [bucket+path string?]
 [upload-id string?]
-[parts-list (listof (cons/c (and/c exact-integer? (between/c 1 10000)) string?))]
+[parts-list (listof (cons/c s3-multipart-number/c string?))]
 ) xexpr?]{
 
 Complete the multipart upload specified the by @racket[upload-id] returned

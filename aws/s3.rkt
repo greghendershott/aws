@@ -403,6 +403,10 @@
   (and/c exact-nonnegative-integer?
          (>=/c aws-chunk-len-minimum)))
 
+(provide aws-chunk-len-minimum
+         aws-chunk-len-default
+         aws-chunk-len/c)
+
 (define/contract/provide (put bucket+path
                               writer
                               data-len
@@ -411,7 +415,7 @@
                               #:chunk-len [chunk-len aws-chunk-len-default])
   (->* (string?
         (-> output-port? void?)
-        (or/c #f exact-nonnegative-integer?)
+        exact-nonnegative-integer?
         string?)
        (dict?
         #:chunk-len aws-chunk-len/c)
@@ -560,6 +564,11 @@
 
 ;; Multipart upload part numbers start at 1, and there's a max of 10000
 (define s3-multipart-number/c (and/c exact-integer? (between/c 1 10000)))
+
+(provide s3-multipart-size-minimum
+         s3-multipart-size-default
+         s3-multipart-size/c
+         s3-multipart-number/c)
 
 (define/contract/provide (multipart-put b+p
                                         num-parts
