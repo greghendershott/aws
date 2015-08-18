@@ -44,7 +44,7 @@ Requirements
 Documentation
 =============
 
-* [Documentation](http://pkg-build.racket-lang.org/doc/rackjure@rackjure/index.html).
+* [Documentation](http://pkg-build.racket-lang.org/doc/aws@aws/index.html).
 
 
 Unit tests
