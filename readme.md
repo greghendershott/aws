@@ -35,7 +35,7 @@ Requirements
   free usage tier.)
 
 * My [http] and [sha] packages. These are listed as dependencies and
-  will be installed uatomatically when you `raco pkg install aws`.
+  will be installed automatically when you `raco pkg install aws`.
 
 [http]: https://github.com/greghendershott/http
 [sha]: https://github.com/greghendershott/sha
