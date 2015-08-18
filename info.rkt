@@ -1,7 +1,8 @@
 #lang setup/infotab
 (define version "1.1")
 (define collection 'multi)
-(define deps '("base"
+(define deps '(["racket" "6.0.1"]
+               "base"
                ["http" "0.3"]
                "sha"
                "rackunit-lib"))

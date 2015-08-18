@@ -25,24 +25,26 @@ Web Services](http://aws.amazon.com/documentation/):
 * [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html).
 
 
-Documentation
-=============
-
-* [HTML format on pkg-build.racket-lang.org](http://pkg-build.racket-lang.org/doc/rackjure@rackjure/index.html).
-
-
 Requirements
 ============
 
+* Racket 6.0.1 or newer.
+
 * The access keys for an Amazon Web Services account. (If you want to
   experiment but are concerned about cost, keep in mind that AWS has a
-  "free tier" for certain usage.)
+  free usage tier.)
 
-* My `http` library. Install: `raco pkg install http`.
-  [Source](https://github.com/greghendershott/http).
+* My [http] and [sha] packages. These are listed as dependencies and
+  will be installed uatomatically when you `raco pkg install aws`.
 
-* My `sha` library. Install: `raco pkg install sha`.
-  [Source](https://github.com/greghendershott/sha)
+[http]: https://github.com/greghendershott/http
+[sha]: https://github.com/greghendershott/sha
+
+
+Documentation
+=============
+
+* [Documentation](http://pkg-build.racket-lang.org/doc/rackjure@rackjure/index.html).
 
 
 Unit tests
@@ -61,7 +63,7 @@ want to run them:
 
   * You can run the tests for one `foo.rkt` file with `raco test foo.rkt`.
 
-  * You can run tests for all files using `raco test -x ./`.  (The `-x` flag is
+  * You can run tests for all files using `raco test -x .`.  (The `-x` flag is
     important to avoid evaluating rkt files that have no `test` module
     whatsoever.)
 
