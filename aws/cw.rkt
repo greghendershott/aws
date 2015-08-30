@@ -241,7 +241,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define/contract (get-metric-statistics #:metric-name metric-name
+(define/contract/provide (get-metric-statistics #:metric-name metric-name
                                         #:namespace namespace
                                         #:statistics statistics
                                         #:unit unit
