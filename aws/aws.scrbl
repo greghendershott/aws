@@ -759,7 +759,7 @@ lets you upload it in multiple 5 MB or larger chunks, using the
 
 @defproc[(multipart-put
 [bucket+path string?]
-[num-parts exact-positive-integer?]
+[num-parts s3-multipart-number/c]
 [get-part (exact-nonnegative-integer? . -> . bytes?)]
 [mime-type string? "application/x-unknown-content-type"]
 [heads dict? '()]
@@ -785,7 +785,7 @@ parallelism and probably better performance.
   [path path?]
   [#:mime-type mime-type string? #f]
   [#:mode mode-flag (or/c 'binary 'text) 'binary]
-  [#:part-size part-size s3-multipart-size/c]
+  [#:part-size part-size (or/c #f s3-multipart-size/c)]
   ) string?]
 
   @defthing[s3-multipart-size-minimum (* 5 1024 1024)]
@@ -798,6 +798,12 @@ Like @racket[put/file] but uses multipart upload.
 
 The parts are uploaded using a small number of worker threads, to get some
 parallelism and probably better performance.
+
+Although it's usually desirable for @racket[part-size] to be as small
+as possible, it must be at least 5 MB, and large enough that no more
+than 10,000 parts are required. When @racket[part-size] is
+@racket[#f], the default, a suitable minimal size is calculated based
+on the @racket[file-size] of @racket[path].
 
 }
 
