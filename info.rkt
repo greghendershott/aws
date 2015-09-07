@@ -1,5 +1,5 @@
 #lang setup/infotab
-(define version "1.2")
+(define version "1.3")
 (define collection 'multi)
 (define deps '(["racket" "6.0.1"]
                "base"
