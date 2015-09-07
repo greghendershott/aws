@@ -18,6 +18,8 @@
 
 @title{Amazon Web Services}
 
+@table-of-contents[]
+
 @; ----------------------------------------------------------------------------
 @section{Introduction}
 
@@ -68,7 +70,11 @@ This library uses my @racket[http] library to make HTTP requests, instead of
 @tt{Range} request header (a sort of @racket[subbytes] for @tt{GET}s).
 
 @; ----------------------------------------------------------------------------
-@section{Names}
+@section{All Services}
+
+
+@; ----------------------------------------------------------------------------
+@subsection{Names}
 
 The names of procedures and structs do @italic{not} have special prefixes to
 ``group'' them.  Instead, use the @racket[prefix-in] option for
@@ -84,7 +90,7 @@ prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
 ]
 
 @; ----------------------------------------------------------------------------
-@section{AWS Keys}
+@subsection{AWS Keys}
 
 @defmodule[aws/keys]
 
@@ -122,7 +128,7 @@ calls @racket[read-keys]. If either is @italic{still} blank, calls
 parameters. }
 
 @; ----------------------------------------------------------------------------
-@section{Exception handling}
+@subsection{Exception handling}
 
 Most of the functions do not return a failure value. Instead they raise
 @racket[exn:fail:aws], which you need to ``catch'' using
@@ -175,7 +181,7 @@ closed!
 }
 
 @; ----------------------------------------------------------------------------
-@section{Connection pooling}
+@subsection{Connection pooling}
 
 This library uses the
 @hyperlink["https://github.com/greghendershott/http" "http"] package

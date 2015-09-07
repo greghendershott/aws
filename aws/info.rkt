@@ -1,3 +1,3 @@
 #lang setup/infotab
 
-(define scribblings '(("aws.scrbl" ())))
+(define scribblings '(("aws.scrbl" (multi-page))))
