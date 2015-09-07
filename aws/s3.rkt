@@ -744,6 +744,23 @@
                         (check-response in h)
                         (read-entity/xexpr in h))))
 
+(define/contract/provide (list-multipart-upload-parts bucket+path upid)
+  (-> string? string? (listof xexpr?))
+  (let loop ([parts '()]
+             [marker ""])
+    (define qp (dict->form-urlencoded `([uploadId ,upid]
+                                        [max-parts "1000"]
+                                        [part-number-marker ,marker])))
+    (define b+p (string-append bucket+path "?" qp))
+    (define-values (u h) (uri&headers b+p "GET" '()))
+    (define xe (call/input-request "1.1" "GET" u h
+                                   (  (in h)
+                                     (check-response in h)
+                                     (read-entity/xexpr in h))))
+    (match* ((first-tag-value xe 'IsTruncated) (append parts (tags xe 'Part)))
+      [("true" parts) (loop parts (first-tag-value xe 'NextPartNumberMarker))]
+      [(_      parts) parts])))
+
 (define/contract/provide (abort-multipart-upload bucket+path upid)
   (-> string? string? void)
   (define b+p (string-append bucket+path"?uploadId=" upid))
