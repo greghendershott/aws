@@ -737,7 +737,8 @@
 
 (define/contract/provide (list-multipart-uploads bucket)
   (-> string? xexpr?)
-  (define b+p (string-append bucket "/?uploads"))
+  ;; TODO: Handle multiple IsTruncated responses
+  (define b+p (string-append bucket "?uploads"))
   (define-values (u h) (uri&headers b+p "GET" '()))
   (call/input-request "1.1" "GET" u h
                       (λ (in h)
