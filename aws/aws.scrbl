@@ -853,6 +853,28 @@ part. You will need to supply a list of these, one for each part, to
 }
 
 
+@defproc[(list-multipart-uploads
+[bucket string?]
+) xexpr?]{
+
+Get information about multipart uploads that haven't been ended with
+@racket[complete-multipart-upload] or @racket[abort-multipart-upload].
+
+}
+
+
+@defproc[(list-multipart-upload-parts
+[bucket+path string?]
+[upload-id string?]
+) (listof xexpr?)]{
+
+Get a list of already-uploaded parts for a multipart upload that
+hasn't been ended with @racket[complete-multipart-upload] or
+@racket[abort-multipart-upload].
+
+}
+
+
 @defproc[(complete-multipart-upload
 [bucket+path string?]
 [upload-id string?]
