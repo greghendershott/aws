@@ -726,14 +726,12 @@
    (xexpr->string
     `(CompleteMultipartUpload
       ()
-      ,@(map (λ (x)
-               (match-define (cons part etag) x)
-               (let ([part (number->string part)]
-                     [etag (cadr (regexp-match #rx"^\"(.+?)\"$" etag))])
-                 `(Part ()
-                        (PartNumber () ,part)
-                        (ETag () ,etag))))
-             (sort parts < #:key car))))))
+      ,@(for/list ([x (in-list (sort parts < #:key car))])
+          (match x
+            [(cons part (regexp "^\"(.+?)\"$" (list _ etag)))
+             `(Part ()
+                    (PartNumber () ,(number->string part))
+                    (ETag () ,etag))]))))))
 
 (define/contract/provide (list-multipart-uploads bucket)
   (-> string? xexpr?)
@@ -755,7 +753,7 @@
     (define b+p (string-append bucket+path "?" qp))
     (define-values (u h) (uri&headers b+p "GET" '()))
     (define xe (call/input-request "1.1" "GET" u h
-                                   (  (in h)
+                                   (λ (in h)
                                      (check-response in h)
                                      (read-entity/xexpr in h))))
     (match* ((first-tag-value xe 'IsTruncated) (append parts (tags xe 'Part)))
