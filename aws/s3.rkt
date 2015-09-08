@@ -1,4 +1,4 @@
-#lang racket/base
+#lang at-exp racket/base
 
 (require file/md5
          http/head
@@ -14,7 +14,9 @@
          racket/match
          racket/port
          racket/string
+         (only-in sha bytes->hex-string)
          xml
+         xml/path
          "exn.rkt"
          "keys.rkt"
          "pool.rkt"
@@ -173,7 +175,7 @@
   (-> (listof string?))
   (define h (add-auth-heads "/" "GET"))
   (define xpr (call/input-request "1.1" "GET" (s3-host) h read-entity/xexpr))
-  (map third (tags xpr 'Name 'Bucket)))
+  (se-path*/list '(Bucket Name) xpr))
 
 (define/contract/provide (delete bucket+path)
   (-> string? string?)
@@ -257,11 +259,11 @@
     (define prefixes (if delimiter
                          (tags xpr 'CommonPrefixes)
                          null))
-    (define truncated? (equal? "true" (first-tag-value xpr 'IsTruncated)))
+    (define truncated? (equal? "true" (se-path* '(IsTruncated) xpr)))
     (define next-marker (and truncated?
                              (if delimiter
-                                 (first-tag-value xpr 'NextMarker)
-                                 (first-tag-value (last contents) 'Key))))
+                                 (se-path* '(NextMarker) xpr)
+                                 (se-path* '(Key) (last contents)))))
     (let* ([cum (if (null? contents)
                     cum
                     (f cum contents))]
@@ -374,7 +376,7 @@
 (define/contract/provide (get/file bucket+path
                                    path
                                    [heads '()]
-                                   #:mode [mode-flag 'binary]
+                                   #:mode [mode 'binary]
                                    #:exists [exists-flag 'error])
   (->* (string? path?)
        (dict?
@@ -388,7 +390,7 @@
                                       (λ (out)
                                         (read-entity/port in h out)
                                         (void))
-                                      #:mode mode-flag
+                                      #:mode mode
                                       #:exists exists-flag))
             heads))
 
@@ -520,17 +522,11 @@
                             'Expect       "100-continue")
                  data))
   (call/output-request "1.1" "PUT" u data data-len h check-response))
-  ;; (put bucket+path
-  ;;      (λ (out) (display data out))
-  ;;      (bytes-length data)
-  ;;      mime-type
-  ;;      (dict-set heads
-  ;;                'Content-MD5 (bytes->Content-MD5 data))))
 
 (define/contract/provide (put/file bucket+path
                                    path
                                    #:mime-type [mime-type #f]
-                                   #:mode [mode-flag 'binary]
+                                   #:mode [mode 'binary]
                                    #:chunk-len [chunk-len aws-chunk-len-default])
   (->* (string?
         path?)
@@ -539,9 +535,8 @@
         #:chunk-len aws-chunk-len/c)
        string?)
   (put bucket+path
-       (λ (out) (call-with-input-file* path
-                                       (λ (in) (copy-port in out))
-                                       #:mode mode-flag))
+       (λ (out) (call-with-input-file* path #:mode mode
+                  (λ (in) (copy-port in out))))
        (file-size path)
        (or mime-type ((path->mime-proc) path))
        (hasheq 'Content-MD5 (file->Content-MD5 path)
@@ -617,7 +612,7 @@
 (define/contract/provide (multipart-put/file bucket+path
                                              path
                                              #:mime-type [mime-type #f]
-                                             #:mode [mode-flag 'binary]
+                                             #:mode [mode 'binary]
                                              #:part-size [_part-size #f])
   (->* (string?
         path?)
@@ -625,21 +620,30 @@
         #:mode (or/c 'binary 'text)
         #:part-size s3-multipart-size/c)
        string?)
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (multipart-put bucket+path
+                 num-parts
+                 (get-file-part path mode part-size)
+                 (or mime-type ((path->mime-proc) path))
+                 (hasheq 'Content-Disposition (path->Content-Disposition path))))
+
+(define/contract (file-sizes-and-parts path _part-size)
+  (-> path?
+      (or/c #f s3-multipart-size/c)
+      (values exact-nonnegative-integer?
+              s3-multipart-size/c
+              s3-multipart-number/c))
   (define total-size (file-size path))
   (define part-size (or _part-size (minimal-part-size total-size)))
   (define num-parts (ceiling (/ total-size part-size)))
-  (define (get-part part-num)
-    ;; Each get-part does its own file open, so we're OK to
-    ;; position/read the same file from multiple threads.
-    (define (read-part in)
+  (values total-size part-size num-parts))
+
+
+(define ((get-file-part path mode part-size) part-num)
+  (call-with-input-file* path #:mode mode
+    (λ (in)
       (file-position in (* part-num part-size))
-      (read-bytes part-size in))
-    (call-with-input-file* path read-part #:mode mode-flag))
-  (multipart-put bucket+path
-                 num-parts
-                 get-part
-                 (or mime-type ((path->mime-proc) path))
-                 (hasheq 'Content-Disposition (path->Content-Disposition path))))
+      (read-bytes part-size in))))
 
 (define/contract (minimal-part-size total-size)
   (-> exact-nonnegative-integer? s3-multipart-size/c)
@@ -678,7 +682,7 @@
 (define/contract/provide (upload-part bucket+path upid part bstr)
   (-> string? string? s3-multipart-number/c bytes?
       (cons/c s3-multipart-number/c string?))
-  (log-aws-debug (tr "upload-part start" upid part))
+  (log-aws-debug @~a{upload-part @part start})
   (define b+p (string-append bucket+path
                              "?partNumber=" (number->string part)
                              "&uploadId=" upid))
@@ -693,7 +697,7 @@
                          (check-response in h)
                          (read-entity/bytes in h)
                          (define part-id (extract-field "ETag" h))
-                         (log-aws-debug (tr "upload-part response" part-id))
+                         (log-aws-debug @~a{upload-part @part response @part-id})
                          (cons part part-id))))
 
 (define/contract/provide (complete-multipart-upload bucket+path upid parts)
@@ -768,6 +772,96 @@
                       (λ (in h)
                         (check-response in h)
                         h)))
+
+;; EXPERIMENTAL.
+;; Return #f if no multipart upload initiated for b+p. Otherwise,
+;; return a cons of an upload ID and a list of parts that were
+;; successfully uploaded previously.
+(define/contract/provide (incomplete-multipart-put/file b+p
+                                                        path
+                                                        #:mode [mode 'binary]
+                                                        #:part-size [_part-size #f])
+  (->* (string?
+        path?)
+       (#:mode (or/c 'binary 'text)
+        #:part-size s3-multipart-size/c)
+       (or/c #f
+             (cons/c string?
+                     (listof (cons/c s3-multipart-number/c string?)))))
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (define get-part (get-file-part path mode part-size))
+  (define (verify? part-num expected-etag)
+    (define bstr (get-part (sub1 part-num)))
+    (define file-etag (bytes->hex-string (md5 (open-input-bytes bstr) #f)))
+    (equal? expected-etag file-etag))
+  (define-values (bucket key) (bucket+path->bucket&path b+p))
+  (for/or ([mpu (in-list (tags (list-multipart-uploads bucket) 'Upload))])
+    (and
+     (equal? key (se-path* '(Key) mpu))
+     (let* ([upid (se-path* '(UploadId) mpu)]
+            [parts (list-multipart-upload-parts b+p upid)])
+       (define xs
+         (filter-map
+          values
+          (for/list ([p (in-list parts)])
+            (define this-part-num (string->number (se-path* '(PartNumber) p)))
+            (define this-part-etag (second (se-path*/list '(ETag) p)))
+            (and (<= this-part-num num-parts)
+                 (verify? this-part-num this-part-etag)
+                 (cons this-part-num this-part-etag)))))
+       ;; If no parts matched, keep going in case it's another MUL for
+       ;; the same b+p and path
+       (and (not (empty? xs))
+            (cons upid xs))))))
+
+;; ;; FOR REPL DEV/TESTING ONLY
+;; (define tmp (build-path "/tmp/multipart-put-test-file"))
+;; (call-with-output-file tmp #:exists 'replace
+;;   (λ (out)
+;;     (for ([n (in-range 20)])
+;;       (write-bytes (make-bytes s3-multipart-size-minimum n) out))))
+;; (define (foo)
+;;   (multipart-put/file "greghendershott/foo" tmp))
+
+;; EXPERIMENTAL.
+;; If incomplete-multipart-put/file returns a non #f result, use it to
+;; resume the upload of the not-yet-uploaded parts.
+(define/contract/provide (resume-multipart-put/file b+p
+                                                    path
+                                                    #:mime-type [mime-type #f]
+                                                    #:mode [mode 'binary]
+                                                    #:part-size [_part-size #f])
+  (->* (string?
+        path?)
+       (#:mime-type (or/c #f string?)
+        #:mode (or/c 'binary 'text)
+        #:part-size s3-multipart-size/c)
+       (or/c #f string?))
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (log-aws-debug @~a{Checking for existing multipart upload of @path to @b+p})
+  (match (incomplete-multipart-put/file b+p
+                                        path
+                                        #:mode mode
+                                        #:part-size part-size)
+    [#f #f]
+    [(cons upid previously-uploaded-parts)
+     (log-aws-debug @~a{Resuming existing upload @upid})
+     (define get-part (get-file-part path mode part-size))
+     (define parts
+       (with-worker-pool (min 4 num-parts)
+         (λ (pool)
+           (for/list ([n (in-range num-parts)])
+             (add-job
+              pool
+              (λ ()
+                (match (assq (add1 n) previously-uploaded-parts)
+                  [(cons part-num etag)
+                   (log-aws-debug @~a{Part @part-num previously uploaded OK @etag})
+                   (cons part-num (string-append "\"" etag "\""))]
+                  [#f (upload-part b+p upid (add1 n) (get-part n))]))))
+           (get-results pool num-parts))))
+     (complete-multipart-upload b+p upid parts)
+     upid]))
 
 
 
