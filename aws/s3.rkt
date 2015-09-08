@@ -27,6 +27,9 @@
                        [s3-path-requests? (parameter/c boolean?)]
                        [path->mime-proc (parameter/c (-> path? string?))]))
 
+(module+ test
+  (require rackunit))
+
 (define s3-scheme (make-parameter "http")) ;; (or/c "http" "https")
 
 ;; This probably should have been named `s3-endpoint` instead. See
@@ -563,11 +566,17 @@
          (>=/c s3-multipart-size-minimum)))
 
 ;; Multipart upload part numbers start at 1, and there's a max of 10000
-(define s3-multipart-number/c (and/c exact-integer? (between/c 1 10000)))
+(define s3-multipart-number-minimum 1)
+(define s3-multipart-number-maximum 10000)
+(define s3-multipart-number/c (and/c exact-integer?
+                                     (between/c s3-multipart-number-minimum
+                                                s3-multipart-number-maximum)))
 
 (provide s3-multipart-size-minimum
          s3-multipart-size-default
          s3-multipart-size/c
+         s3-multipart-number-minimum
+         s3-multipart-number-maximum
          s3-multipart-number/c)
 
 (define/contract/provide (multipart-put b+p
@@ -576,7 +585,7 @@
                                         [mime-type default-mime-type]
                                         [heads '()])
   (->* (string?
-        exact-positive-integer?
+        s3-multipart-number/c
         (-> exact-nonnegative-integer? bytes?))
        (string?
         dict?)
@@ -609,14 +618,16 @@
                                              path
                                              #:mime-type [mime-type #f]
                                              #:mode [mode-flag 'binary]
-                                             #:part-size [part-size s3-multipart-size-default])
+                                             #:part-size [_part-size #f])
   (->* (string?
         path?)
        (#:mime-type (or/c #f string?)
         #:mode (or/c 'binary 'text)
         #:part-size s3-multipart-size/c)
        string?)
-  (define num-parts (ceiling (/ (file-size path) part-size)))
+  (define total-size (file-size path))
+  (define part-size (or _part-size (minimal-part-size total-size)))
+  (define num-parts (ceiling (/ total-size part-size)))
   (define (get-part part-num)
     ;; Each get-part does its own file open, so we're OK to
     ;; position/read the same file from multiple threads.
@@ -629,6 +640,26 @@
                  get-part
                  (or mime-type ((path->mime-proc) path))
                  (hasheq 'Content-Disposition (path->Content-Disposition path))))
+
+(define/contract (minimal-part-size total-size)
+  (-> exact-nonnegative-integer? s3-multipart-size/c)
+  ;; Given a total size, return a part size that is at least
+  ;; s3-multipart-size-minimum, and large enough that uploading
+  ;; total-size won't require using more than
+  ;; s3-multipart-number-maximum parts -- but otherwise as small as
+  ;; possible.
+  (cond [(< total-size (* s3-multipart-size-minimum s3-multipart-number-maximum))
+         s3-multipart-size-minimum]
+        [else
+         (ceiling (/ total-size s3-multipart-number-maximum))]))
+
+(module+ test
+  (let ([boundary (* s3-multipart-size-minimum s3-multipart-number-maximum)])
+    (check-equal?  (minimal-part-size 0)               s3-multipart-size-minimum)
+    (check-equal?  (minimal-part-size 1)               s3-multipart-size-minimum)
+    (check-equal?  (minimal-part-size (sub1 boundary)) s3-multipart-size-minimum)
+    (check-equal?  (minimal-part-size boundary)        s3-multipart-size-minimum)
+    (check-true (> (minimal-part-size (add1 boundary)) s3-multipart-size-minimum))))
 
 (define/contract/provide (initiate-multipart-upload bucket+path mime-type heads)
   (-> string? string? dict? string?)
@@ -695,23 +726,39 @@
    (xexpr->string
     `(CompleteMultipartUpload
       ()
-      ,@(map (λ (x)
-               (match-define (cons part etag) x)
-               (let ([part (number->string part)]
-                     [etag (cadr (regexp-match #rx"^\"(.+?)\"$" etag))])
-                 `(Part ()
-                        (PartNumber () ,part)
-                        (ETag () ,etag))))
-             (sort parts < #:key car))))))
+      ,@(for/list ([x (in-list (sort parts < #:key car))])
+          (match x
+            [(cons part (regexp "^\"(.+?)\"$" (list _ etag)))
+             `(Part ()
+                    (PartNumber () ,(number->string part))
+                    (ETag () ,etag))]))))))
 
 (define/contract/provide (list-multipart-uploads bucket)
   (-> string? xexpr?)
+  ;; TODO: Handle multiple IsTruncated responses
   (define b+p (string-append bucket "/?uploads"))
   (define-values (u h) (uri&headers b+p "GET" '()))
   (call/input-request "1.1" "GET" u h
                       (λ (in h)
                         (check-response in h)
                         (read-entity/xexpr in h))))
+
+(define/contract/provide (list-multipart-upload-parts bucket+path upid)
+  (-> string? string? (listof xexpr?))
+  (let loop ([parts '()]
+             [marker ""])
+    (define qp (dict->form-urlencoded `([uploadId ,upid]
+                                        [max-parts "1000"]
+                                        [part-number-marker ,marker])))
+    (define b+p (string-append bucket+path "?" qp))
+    (define-values (u h) (uri&headers b+p "GET" '()))
+    (define xe (call/input-request "1.1" "GET" u h
+                                   (λ (in h)
+                                     (check-response in h)
+                                     (read-entity/xexpr in h))))
+    (match* ((first-tag-value xe 'IsTruncated) (append parts (tags xe 'Part)))
+      [("true" parts) (loop parts (first-tag-value xe 'NextPartNumberMarker))]
+      [(_      parts) parts])))
 
 (define/contract/provide (abort-multipart-upload bucket+path upid)
   (-> string? string? void)
@@ -803,8 +850,7 @@
 ;;; test
 
 (module+ test
-  (require rackunit
-           net/url
+  (require net/url
            "tests/data.rkt")
   (test-case
    "valid-bucket-name?"

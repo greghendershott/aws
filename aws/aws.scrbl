@@ -18,6 +18,8 @@
 
 @title{Amazon Web Services}
 
+@table-of-contents[]
+
 @; ----------------------------------------------------------------------------
 @section{Introduction}
 
@@ -68,7 +70,11 @@ This library uses my @racket[http] library to make HTTP requests, instead of
 @tt{Range} request header (a sort of @racket[subbytes] for @tt{GET}s).
 
 @; ----------------------------------------------------------------------------
-@section{Names}
+@section{All Services}
+
+
+@; ----------------------------------------------------------------------------
+@subsection{Names}
 
 The names of procedures and structs do @italic{not} have special prefixes to
 ``group'' them.  Instead, use the @racket[prefix-in] option for
@@ -84,7 +90,7 @@ prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
 ]
 
 @; ----------------------------------------------------------------------------
-@section{AWS Keys}
+@subsection{AWS Keys}
 
 @defmodule[aws/keys]
 
@@ -122,7 +128,7 @@ calls @racket[read-keys]. If either is @italic{still} blank, calls
 parameters. }
 
 @; ----------------------------------------------------------------------------
-@section{Exception handling}
+@subsection{Exception handling}
 
 Most of the functions do not return a failure value. Instead they raise
 @racket[exn:fail:aws], which you need to ``catch'' using
@@ -175,7 +181,7 @@ closed!
 }
 
 @; ----------------------------------------------------------------------------
-@section{Connection pooling}
+@subsection{Connection pooling}
 
 This library uses the
 @hyperlink["https://github.com/greghendershott/http" "http"] package
@@ -759,7 +765,7 @@ lets you upload it in multiple 5 MB or larger chunks, using the
 
 @defproc[(multipart-put
 [bucket+path string?]
-[num-parts exact-positive-integer?]
+[num-parts s3-multipart-number/c]
 [get-part (exact-nonnegative-integer? . -> . bytes?)]
 [mime-type string? "application/x-unknown-content-type"]
 [heads dict? '()]
@@ -785,7 +791,7 @@ parallelism and probably better performance.
   [path path?]
   [#:mime-type mime-type string? #f]
   [#:mode mode-flag (or/c 'binary 'text) 'binary]
-  [#:part-size part-size s3-multipart-size/c]
+  [#:part-size part-size (or/c #f s3-multipart-size/c)]
   ) string?]
 
   @defthing[s3-multipart-size-minimum (* 5 1024 1024)]
@@ -798,6 +804,12 @@ Like @racket[put/file] but uses multipart upload.
 
 The parts are uploaded using a small number of worker threads, to get some
 parallelism and probably better performance.
+
+Although it's usually desirable for @racket[part-size] to be as small
+as possible, it must be at least 5 MB, and large enough that no more
+than 10,000 parts are required. When @racket[part-size] is
+@racket[#f], the default, a suitable minimal size is calculated based
+on the @racket[file-size] of @racket[path].
 
 }
 
@@ -843,6 +855,28 @@ unless it's the last part.
 Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
 part. You will need to supply a list of these, one for each part, to
 @racket[complete-multipart-upload].
+
+}
+
+
+@defproc[(list-multipart-uploads
+[bucket string?]
+) xexpr?]{
+
+Get information about multipart uploads that haven't been ended with
+@racket[complete-multipart-upload] or @racket[abort-multipart-upload].
+
+}
+
+
+@defproc[(list-multipart-upload-parts
+[bucket+path string?]
+[upload-id string?]
+) (listof xexpr?)]{
+
+Get a list of already-uploaded parts for a multipart upload that
+hasn't been ended with @racket[complete-multipart-upload] or
+@racket[abort-multipart-upload].
 
 }
 
