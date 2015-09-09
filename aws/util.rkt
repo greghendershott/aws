@@ -10,7 +10,10 @@
          racket/port
          racket/string
          xml/xexpr
-         "take.rkt")
+         "take.rkt"
+         "xml-path.rkt")
+
+(provide (all-from-out "xml-path.rkt"))
 
 (module+ test
   (require rackunit))
@@ -69,41 +72,6 @@
                     (tr e1 ...))]))
 
 (provide tr)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define/contract/provide (tags xpr tag [direct-child-of #f])
-  ((xexpr/c symbol?) ((or/c #f symbol?)) . ->* . (listof xexpr/c))
-  ;; Given an xexpr return a list of all the elements starting with
-  ;; tag, at any depth. Even if a tag is nested inside the same tag,
-  ;; which is great for e.g. HTML, and convienent for certain known
-  ;; XML responses, but be careful using this with arbitrary XML.
-  (define (do xpr parent)
-    (cond [(empty? xpr) '()]
-          [else
-           (define this-xpr (first xpr))
-           (cond [(and (list? this-xpr)
-                       (not (empty? this-xpr)))
-                  (define this-tag (first this-xpr))
-                  (define found? (and (equal? this-tag tag)
-                                      (or (not direct-child-of)
-                                          (equal? direct-child-of parent))))
-                  (append (cond [found? (list this-xpr)]  ;found one!
-                                [else '()])
-                          (do this-xpr this-tag)    ;down
-                          (do (rest xpr) parent))]  ;across
-                 [else
-                  (do (rest xpr) parent)])]))       ;across
-  (do xpr #f))
-
-(define/provide (first-tag-value x t [def #f])
-  ;; Given an xexpr?, return just the value of the first element with
-  ;; tag `t`.
-  (match (tags x t)
-    ['() def]
-    [(list (list _ v) ...) (first v)]
-    [(list (list _ _ v) ...) (first v)]
-    [else def]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

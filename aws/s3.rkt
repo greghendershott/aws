@@ -16,12 +16,12 @@
          racket/string
          (only-in sha bytes->hex-string)
          xml
-         xml/path
          "exn.rkt"
          "keys.rkt"
          "pool.rkt"
          "sigv4.rkt"
-         "util.rkt")
+         "util.rkt"
+         "xml-path.rkt")
 
 (provide (contract-out [s3-scheme (parameter/c string?)]
                        [s3-host (parameter/c string?)]
@@ -220,9 +220,9 @@
                                     (λ (in h)
                                       (check-response in h)
                                       (read-entity/xexpr in h))))
-    (define contents (tags xpr 'Contents))
+    (define contents (se-path*/elements '(Contents) xpr))
     (define prefixes (if delimiter
-                         (tags xpr 'CommonPrefixes)
+                         (se-path*/elements '(CommonPrefixes) xpr)
                          null))
     (define truncated? (equal? "true" (se-path* '(IsTruncated) xpr)))
     (define next-marker (and truncated?
@@ -241,21 +241,21 @@
 
 (define/contract/provide (ls b+p)
   (-> string? (listof string?))
-  (map (λ (x) (first-tag-value x 'Key))
+  (map (λ (x) (se-path* '(Key) x))
        (ls/proc b+p append '())))
 
 (define/contract/provide (ll* b+p)
   (-> string? (listof (list/c xexpr? string? xexpr?)))
   (define-values (b p) (bucket+path->bucket&path b+p))
   (for/list ([x (in-list (ls/proc b+p append '()))])
-    (define path (string-append b "/" (first-tag-value x 'Key)))
+    (define path (string-append b "/" (se-path* '(Key) x)))
     (list x (head path) (get-acl path))))
 
 (define/contract/provide (ll b+p)
   (-> string? (listof (list/c string? string? xexpr?)))
   (for/list ([x (in-list (ll* b+p))])
     (match-define (list contents heads acl) x)
-    (list (first-tag-value contents 'Key) heads acl)))
+    (list (se-path* '(Key) contents) heads acl)))
 
 (define/contract/provide (copy b+p/from b+p/to)
   (-> string? string? string?)
@@ -685,7 +685,7 @@
                                 (λ (in h)
                                   (check-response in h)
                                   (read-entity/xexpr in h))))
-  (define upid (first-tag-value x 'UploadId))
+  (define upid (se-path* '(UploadId) x))
   (log-aws-debug (tr "initiate-multipart-upload returned" upid))
   upid)
 
@@ -728,8 +728,8 @@
                          (define x (read-entity/xexpr in h))
                          ;; Check the response XML to see if
                          ;; truly succeeded.
-                         (when (first-tag-value x 'Error)
-                           (log-aws-fatal (tr x))
+                         (when (se-path* '(Error) x)
+                           (log-aws-fatal (~a x))
                            (raise (header&response->exn:fail:aws
                                    h x (current-continuation-marks))))
                          x)))
@@ -770,8 +770,8 @@
                                    (λ (in h)
                                      (check-response in h)
                                      (read-entity/xexpr in h))))
-    (match* ((first-tag-value xe 'IsTruncated) (append parts (tags xe 'Part)))
-      [("true" parts) (loop parts (first-tag-value xe 'NextPartNumberMarker))]
+    (match* ((se-path* '(IsTruncated) xe) (append parts (se-path*/elements '(Part) xe)))
+      [("true" parts) (loop parts (se-path* '(NextPartNumberMarker) xe))]
       [(_      parts) parts])))
 
 (define/contract/provide (abort-multipart-upload bucket+path upid)
@@ -805,7 +805,7 @@
     (define file-etag (bytes->hex-string (md5 (open-input-bytes bstr) #f)))
     (equal? expected-etag file-etag))
   (define-values (bucket key) (bucket+path->bucket&path b+p))
-  (for/or ([mpu (in-list (tags (list-multipart-uploads bucket) 'Upload))])
+  (for/or ([mpu (in-list (se-path*/elements '(Upload) (list-multipart-uploads bucket)))])
     (and
      (equal? key (se-path* '(Key) mpu))
      (let* ([upid (se-path* '(UploadId) mpu)]
@@ -1066,7 +1066,7 @@
                     (unless (null? xs)
                       (define x (car xs))
                       (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
-                      (check-equal? (first-tag-value x (if more? 'Prefix 'Key))
+                      (check-equal? (se-path* (if more? '(Prefix) '(Key)) x)
                                     (string-append prefix (car p) (if more? "/" "")))))
                   (void))
          (when more?
@@ -1097,7 +1097,7 @@
               [uri (sign-uri b+p "GET" expire '())]
               [_ (sleep (add1 expire))]
               [x (call/input-request "1.1" "GET" uri '() read-entity/xexpr)])
-         (check-equal? (first-tag-value x 'Message) "Request has expired"))
+         (check-equal? (se-path* '(Message) x) "Request has expired"))
 
        ;; ACL
        (define acl (get-acl b+p))

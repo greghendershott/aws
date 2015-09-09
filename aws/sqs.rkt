@@ -3,6 +3,7 @@
 (require http/request
          racket/contract/base
          racket/dict
+         racket/function
          racket/list
          racket/match
          xml/xexpr
@@ -49,19 +50,18 @@
     (append (result-proc x)
             ;; If a NextToken element in the response XML, we need to
             ;; call again to get more values.
-            (match (tags x 'NextToken)
-              [(list `(NextToken () ,token))
-               (sqs uri
-                    (set-next-token params token)
-                    result-proc)]
-              [_ '()]))))
+            (match (se-path* '(NextToken) x)
+              [#f '()]
+              [token (sqs uri
+                          (set-next-token params token)
+                          result-proc)]))))
 
 (define/contract/provide (create-queue name)
   (-> string? string?)
-  (first-tag-value (sqs (endpoint->uri (sqs-endpoint) "/")
-                        `((Action "CreateQueue")
-                          (QueueName ,name)))
-                   'QueueUrl))
+  (se-path* '(QueueUrl)
+            (sqs (endpoint->uri (sqs-endpoint) "/")
+                 `((Action "CreateQueue")
+                   (QueueName ,name)))))
 
 (define/contract/provide (delete-queue q-uri)
   (-> string? void?)
@@ -70,19 +70,21 @@
 
 (define/contract/provide (list-queues)
   (-> (listof string?))
-  (sqs (endpoint->uri (sqs-endpoint) "/")
-       `((Action "ListQueues"))
-       (lambda (x) (map third (tags x 'QueueUrl)))))
+  (se-path*/list '(QueueUrl)
+                 (sqs (endpoint->uri (sqs-endpoint) "/")
+                      `((Action "ListQueues")))))
 
 (define/contract/provide (get-queue-uri name)
   (-> string? string?)
-  (first-tag-value (sqs (endpoint->uri (sqs-endpoint) "/")
-                        `((Action "GetQueueUrl")
-                          (QueueName ,name)))
-                   'QueueUrl))
+  (se-path* '(QueueUrl)
+            (sqs (endpoint->uri (sqs-endpoint) "/")
+                 `((Action "GetQueueUrl")
+                   (QueueName ,name)))))
 
 (define/contract/provide (send-message q-uri body [delay-seconds #f])
-  ((string? string?) ((or/c #f exact-nonnegative-integer?)) . ->* . void?)
+  (->* (string? string?)
+       ((or/c #f exact-nonnegative-integer?))
+       void?)
   (void (sqs q-uri
              `((Action "SendMessage")
                (MessageBody ,body)
@@ -95,11 +97,10 @@
 (define/contract/provide (receive-messages q-uri
                                            [max 1]
                                            [visibility-timeout #f])
-  ((string?)
-   ((and/c exact-integer? (between/c 1 10))
-    (or/c #f exact-nonnegative-integer?)
-    )
-   . ->* . (listof message?))
+  (->* (string?)
+       ((and/c exact-integer? (between/c 1 10))
+        (or/c #f exact-nonnegative-integer?))
+       (listof message?))
   (sqs q-uri
        `((Action "ReceiveMessage")
          (AttributeName.1 "All")
@@ -107,21 +108,23 @@
          ,@(if visibility-timeout
                `((VisibilityTimeout ,(number->string visibility-timeout)))
                '()))
-       (lambda (x)
-         (for/list ([x (in-list (tags x 'Message))])
-             (message (first-tag-value x 'Body)
-                      (first-tag-value x 'MD5OfBody)
-                      (first-tag-value x 'MessageId)
-                      (first-tag-value x 'ReceiptHandle)
-                      (map attribute-xexpr->attrib-pair (tags x 'Attribute)))))))
+       (λ (x)
+         (for/list ([x (in-list (se-path*/elements '(Message) x))])
+             (message (se-path* '(Body) x)
+                      (se-path* '(MD5OfBody) x)
+                      (se-path* '(MessageId) x)
+                      (se-path* '(ReceiptHandle) x)
+                      (map attribute-xexpr->attrib-pair
+                           (se-path*/elements '(Attribute) x)))))))
 
 
 (define/contract/provide (receive-message q-uri [visibility-timeout #f])
-  ((string?) ((or/c #f exact-nonnegative-integer?)) . ->* . message?)
-  (define xsm (receive-messages q-uri 1 visibility-timeout))
-  (unless (not (empty? xsm))
-    (error 'receive-message "no messages returned"))
-  (first xsm))
+  (->* (string?)
+       ((or/c #f exact-nonnegative-integer?))
+       message?)
+  (match (receive-messages q-uri 1 visibility-timeout)
+    [(cons m _) m]
+    [_ (error 'receive-message "no messages returned")]))
 
 (define/contract/provide (delete-message q-uri receipt-handle)
   (-> string? string? void?)
@@ -135,7 +138,8 @@
        '((Action "GetQueueAttributes")
          (AttributeName.1 "All"))
        (lambda (x)
-         (map attribute-xexpr->attrib-pair (tags x 'Attribute)))))
+         (map attribute-xexpr->attrib-pair
+              (se-path*/elements '(Attribute) x)))))
 
 (define/contract/provide (change-message-visibility q-uri receipt-handle timeout)
   (-> string? string? exact-nonnegative-integer? void?)

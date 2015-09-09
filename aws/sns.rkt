@@ -4,6 +4,7 @@
          http/request
          racket/contract/base
          racket/dict
+         racket/function
          racket/list
          racket/match
          racket/string
@@ -23,7 +24,9 @@
   (make-parameter "us-east-1"))
 
 (define/contract/provide (sns params [result-proc values])
-  (((listof (list/c symbol? string?))) ((xexpr? . -> . list?)) . ->* . list?)
+  (->* ((listof (list/c symbol? string?)))
+       ((xexpr/c . -> . list?))
+       list?)
   (ensure-have-keys)
   (let* ([qp-text (dict->form-urlencoded (sort params param<?))]
          [uri (endpoint->uri (sns-endpoint) (string-append "/?" qp-text))]
@@ -49,30 +52,30 @@
     (append (result-proc result)
             ;; If a NextToken element in the response XML, we need to
             ;; call again to get more values.
-            (match (tags result 'NextToken)
+            (match (se-path*/elements '(NextToken) result)
               [(list `(NextToken () ,token)) (sns (set-next-token params token)
                                                   result-proc)]
               [_                             '()]))))
 
 (define/contract/provide (create-topic name)
-  (string? . -> . string?)
+  (-> string? string?)
   (match (sns `((Action "CreateTopic")
                 (Name ,name))
-              (λ (x) (map third (tags x 'TopicArn))))
+              (curry se-path*/list '(TopicArn)))
     [(cons arn _) arn]
     [_            (error 'create-topic "Unexpected response")]))
 
 (define/contract/provide (delete-topic arn)
-  (string? . -> . any)
+  (-> string? any)
   (void (sns `((Action "DeleteTopic")
                (TopicArn ,arn)))))
 
 (define/contract/provide (get-topic-attributes arn)
-  (string? . -> . (listof (cons/c symbol? string?)))
+  (-> string? (listof (cons/c symbol? string?)))
   (sns `((Action "GetTopicAttributes")
          (TopicArn ,arn))
        (λ (x)
-         (for/list ([x (in-list (tags x 'entry))])
+         (for/list ([x (in-list (se-path*/elements '(entry) x))])
              (match x
                [(list 'entry '() _ ...
                       (list 'key '() key)
@@ -85,19 +88,19 @@
 (define/contract/provide (list-topics)
   (-> (listof string?))
   (sns `((Action "ListTopics"))
-       (λ (x) (map third (tags x 'TopicArn)))))
+       (curry se-path*/list '(TopicArn))))
 
 (struct subscription (owner topic-arn subscription-arn protocol endpoint)
         #:transparent)
 (provide (struct-out subscription))
 
 (define (xexpr->subscriptions x)
-  (for/list ([x (in-list (tags x 'member))])
-      (subscription (first-tag-value x 'Owner)
-                    (first-tag-value x 'TopicArn)
-                    (first-tag-value x 'SubscriptionArn)
-                    (first-tag-value x 'Protocol)
-                    (first-tag-value x 'Endpoint))))
+  (for/list ([x (in-list (se-path*/elements '(Subscriptions member) x))])
+      (subscription (se-path* '(Owner) x)
+                    (se-path* '(TopicArn) x)
+                    (se-path* '(SubscriptionArn) x)
+                    (se-path* '(Protocol) x)
+                    (se-path* '(Endpoint) x))))
 
 (define/contract/provide (list-subscriptions)
   (-> (listof subscription?))
@@ -105,7 +108,7 @@
        xexpr->subscriptions))
 
 (define/contract/provide (list-subscriptions-by-topic arn)
-  (string? . -> . (listof subscription?))
+  (-> string? (listof subscription?))
   (sns `((Action "ListSubscriptionsByTopic")
          (TopicArn ,arn))
        xexpr->subscriptions))
@@ -123,27 +126,27 @@
     [_ #f]))
 
 (define/contract/provide (subscribe endpoint protocol topic-arn)
-  (string? sns-protocol? string? . -> . string?)
+  (-> string? sns-protocol? string? string?)
   (match (sns `((Action "Subscribe")
                 (Endpoint ,endpoint)
                 (Protocol ,protocol)
                 (TopicArn ,topic-arn))
               (λ (x)
-                (list (first-tag-value x 'SubscriptionArn))))
+                (list (se-path* '(SubscriptionArn) x))))
     [(cons arn _) arn]
     [_            (error 'create-topic "Unexpected response")]))
 
 (define/contract/provide (unsubscribe subscription-arn)
-  (string? . -> . any)
+  (-> string? any)
   (void (sns `((Action "Unsubscribe")
                (SubscriptionArn ,subscription-arn)))))
 
 (define/contract/provide (publish arn msg
                                   #:subject [subject "No subject"]
                                   #:json? [json? #f])
-  ((string? string?)
-   (#:subject string? #:json? boolean?)
-   . ->* . any)
+  (->* (string? string?)
+       (#:subject string? #:json? boolean?)
+       any)
   (sns (append `((Action "Publish")
                  (Message ,msg)
                  (TopicArn ,arn)

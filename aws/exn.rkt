@@ -31,9 +31,7 @@
 ;; whatever -- to make sure the port is closed.
 (define/contract/provide (check-response p h)
   (input-port? string? . -> . string? #| OR raises exn:fail:aws |# )
-  (define http-code (extract-http-code h))
-  (define http-text (extract-http-text h))
-  (match http-code
+  (match (extract-http-code h)
     ;; Codes we return and expect client to deal with.
     [200 h]
     [201 h]
@@ -50,7 +48,7 @@
 
 (define/contract/provide (header&response->exn:fail:aws h e ccm)
   (string? (or/c bytes? xexpr?) continuation-mark-set? . -> . exn:fail:aws?)
-  (log-aws-error (format "~a ~a" h e))
+  (log-aws-error "~a ~a" h e)
   (define http-code (extract-http-code h))
   (define http-text (extract-http-text h))
   (define content-type (extract-field "Content-Type" h))
@@ -76,7 +74,7 @@
                                "(.*?)"
                                (regexp-quote (format "</~a>" x)))))
       (cond [(bytes? e) (let ([m (regexp-match (rx) e)]) (and m (cadr m)))]
-            [(xexpr? e) (first-tag-value e x)]))
+            [(xexpr? e) (se-path* (list x) e)]))
     (define aws-code (get 'Code))
     (define aws-msg (get 'Message))
     (exn:fail:aws (format "HTTP ~a \"~a\". AWS Code=\"~a\" Message=\"~a\""

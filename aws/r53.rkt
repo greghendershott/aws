@@ -95,9 +95,9 @@
   (let ([name (match name           ;helpfully (?) append . if missing
                 [(pregexp "\\.$") name]
                 [_ (string-append name ".")])])
-    (for/or ([zone (tags (list-hosted-zones) 'HostedZone)])
-      (match (first-tag-value zone 'Name)
-        [(== name) (first-tag-value zone 'Id)]
+    (for/or ([zone (in-list (se-path*/elements '(HostedZone) (list-hosted-zones)))])
+      (match (se-path* '(Name) zone)
+        [(== name) (se-path* '(Id) zone)]
         [_ #f]))))
 
 
@@ -112,7 +112,7 @@
 ;; function returns, as well as for r53's maxitems query
 ;; parameter. Pay attention to the logic below.
 (define/contract (list-resource-record-sets zone-id
-                                            #:max-items [max-items #f]
+                                            #:max-items [max-items 100]
                                             #:name [name #f]
                                             #:type [type #f]
                                             #:id [id #f])
@@ -139,15 +139,15 @@
                                   (λ (in h)
                                     (check-response in h)
                                     (read-entity/xexpr in h))))
-    (define rs (or (tags x 'ResourceRecordSet) '()))
+    (define rs (se-path*/elements '(ResourceRecordSet) x))
     (define len (length rs))
     (append rs
             (cond [(and (< len max-items)
-                        (string-ci=? "true" (first-tag-value x 'IsTruncated)))
+                        (string-ci=? "true" (se-path* '(IsTruncated) x)))
                    (loop (min max-items len)
-                         (first-tag-value x 'NextRecordName)
-                         (first-tag-value x 'NextRecordType)
-                         (first-tag-value x 'NextRecordId))]
+                         (se-path* '(NextRecordName) x)
+                         (se-path* '(NextRecordType) x)
+                         (se-path* '(NextRecordId) x))]
                   [else '()]))))
 
 ;; It's up to the caller to create an xexpr according to
@@ -195,7 +195,7 @@
                                    (format "unique-~a" (current-seconds))
                                    "some comment"))
      (check-true (xexpr? x))
-     (define zid (first-tag-value x 'Id))
+     (define zid (se-path* '(Id) x))
      (check-true (string? zid))
      (delete-hosted-zone zid)
      (void))
@@ -203,8 +203,8 @@
      "Route53 read-only record sets"
      (ensure-have-keys)
      (define zs (list-hosted-zones))
-     (define zid (first-tag-value zs 'Id)) ;just grab first one
-     (define name (first-tag-value zs 'Name)) ;just grab first
+     (define zid (se-path* '(Id) zs)) ;just grab first one
+     (define name (se-path* '(Name) zs)) ;just grab first
      (check-true (match (get-hosted-zone zid)
                    [`(GetHostedZoneResponse
                       ((xmlns "https://route53.amazonaws.com/doc/2012-02-29/"))
