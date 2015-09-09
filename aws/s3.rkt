@@ -177,47 +177,12 @@
   (define xpr (call/input-request "1.1" "GET" (s3-host) h read-entity/xexpr))
   (se-path*/list '(Bucket Name) xpr))
 
-(define/contract/provide (delete bucket+path)
-  (-> string? string?)
-  (define-values (u h) (uri&headers bucket+path "DELETE" '()))
-  (call/input-request "1.1" "DELETE" u h
-                      (λ (in h)
-                        (check-response in h)
-                        h)))
-
-(define/contract/provide (delete-multiple bucket paths)
-  (-> string? (listof string?) string?)
-  (when ((length paths) . > . 1000)
-    (error 'delete-multiple "cannot delete more than 1000 items at a time"))
-  (define data
-    (string->bytes/utf-8 (xexpr->string
-                          `(Delete
-                            ,@(for/list ([p (in-list paths)])
-                                `(Object () (Key () ,p)))))))
-  (define-values (u h) (uri&headers (string-append bucket "/?delete")
-                                    "POST"
-                                    (hasheq 'Content-MD5 (bytes->Content-MD5 data))
-                                    data))
-  (call/output-request "1.1" "POST" u data (bytes-length data) h
-                       (λ (in h)
-                         (check-response in h)
-                         ;; Just because 200 OK doesn't mean no error.
-                         ;; Check for <Error> in the response.
-                         (define e (read-entity/bytes in h))
-                         (match e
-                           [(regexp "<Error>.*?</Error>")
-                            (raise (header&response->exn:fail:aws
-                                    h e (current-continuation-marks)))]
-                           [_ (void)])
-                         h)))
-
-(define/contract/provide (head bucket+path)
-  (-> string? string?)
-  (define-values (u h) (uri&headers bucket+path "HEAD"))
-  (call/input-request "1.1" "HEAD" u h
-                      (λ (in h)
-                        (check-response in h)
-                        h)))
+(define/contract/provide (bucket-location bucket [default "us-east-1"])
+  (->* (string?) (string?) string?)
+  (parameterize ([s3-path-requests? #t])
+    (match (get/proc (string-append bucket "/?location") read-entity/xexpr)
+      [`(LocationConstraint ,_ ,location) location]
+      [_ default])))
 
 (define/contract/provide (get-acl bucket+path [heads '()])
   (->* (string?) (dict?) xexpr?)
@@ -328,6 +293,51 @@
                            [_ (void)])
                          h)))
 
+
+
+;;; delete/head objects in buckets
+
+(define/contract/provide (delete bucket+path)
+  (-> string? string?)
+  (define-values (u h) (uri&headers bucket+path "DELETE" '()))
+  (call/input-request "1.1" "DELETE" u h
+                      (λ (in h)
+                        (check-response in h)
+                        h)))
+
+(define/contract/provide (delete-multiple bucket paths)
+  (-> string? (listof string?) string?)
+  (when ((length paths) . > . 1000)
+    (error 'delete-multiple "cannot delete more than 1000 items at a time"))
+  (define data
+    (string->bytes/utf-8 (xexpr->string
+                          `(Delete
+                            ,@(for/list ([p (in-list paths)])
+                                `(Object () (Key () ,p)))))))
+  (define-values (u h) (uri&headers (string-append bucket "/?delete")
+                                    "POST"
+                                    (hasheq 'Content-MD5 (bytes->Content-MD5 data))
+                                    data))
+  (call/output-request "1.1" "POST" u data (bytes-length data) h
+                       (λ (in h)
+                         (check-response in h)
+                         ;; Just because 200 OK doesn't mean no error.
+                         ;; Check for <Error> in the response.
+                         (define e (read-entity/bytes in h))
+                         (match e
+                           [(regexp "<Error>.*?</Error>")
+                            (raise (header&response->exn:fail:aws
+                                    h e (current-continuation-marks)))]
+                           [_ (void)])
+                         h)))
+
+(define/contract/provide (head bucket+path)
+  (-> string? string?)
+  (define-values (u h) (uri&headers bucket+path "HEAD"))
+  (call/input-request "1.1" "HEAD" u h
+                      (λ (in h)
+                        (check-response in h)
+                        h)))
 
 
 ;;; get

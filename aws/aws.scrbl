@@ -383,6 +383,26 @@ List all the buckets belonging to your AWS account.
 }
 
 
+@defproc[(bucket-location
+[bucket string?]
+[default string? "us-east-1"]
+) string?]{
+
+Return @racket[bucket]'s @tt{LocationConstraint} value, if any, else
+@racket[default].
+
+When dealing with arbitrary buckets, you might need to @racket[parameterize]
+@racket[s3-region] to this value because AWS Signature v4 requires a region to
+be specified. For example:
+
+@racketblock[
+(parameterize ([s3-region (bucket-location "my-bucket")])
+  (ls "my-bucket/"))
+]
+
+}
+
+
 @defproc[(ls/proc
 [bucket+path string?]
 [proc (any/c (listof xexpr?) . -> . any/c)]
