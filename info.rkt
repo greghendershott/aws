@@ -6,6 +6,7 @@
                ["http" "0.3"]
                "sha"
                "rackunit-lib"))
-(define build-deps '("racket-doc"
+(define build-deps '("at-exp-lib"
+                     "racket-doc"
                      "rackunit-lib"
                      "scribble-lib"))
