@@ -1,7 +1,8 @@
-# Overview
-
 [![Build Status](https://travis-ci.org/greghendershott/aws.png?branch=master)](https://travis-ci.org/greghendershott/aws)
 [![raco pkg install aws](https://img.shields.io/badge/Racket_Package-raco_pkg_install_aws-blue.svg)](http:pkgs.racket-lang.org/#[aws])
+
+
+# Overview
 
 Provides [Racket](http://www.racket-lang.org) support for many [Amazon
 Web Services](http://aws.amazon.com/documentation/):
