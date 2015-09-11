@@ -1,5 +1,7 @@
-Overview
-========
+# Overview
+
+[![Build Status](https://travis-ci.org/greghendershott/aws.png?branch=master)](https://travis-ci.org/greghendershott/aws)
+[![raco pkg install aws](https://img.shields.io/badge/Racket_Package-raco_pkg_install_aws-blue.svg)](http:pkgs.racket-lang.org/#[aws])
 
 Provides [Racket](http://www.racket-lang.org) support for many [Amazon
 Web Services](http://aws.amazon.com/documentation/):
@@ -25,8 +27,7 @@ Web Services](http://aws.amazon.com/documentation/):
 * [Dynamo](http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html).
 
 
-Requirements
-============
+# Requirements
 
 * Racket 6.0.1 or newer.
 
@@ -41,14 +42,12 @@ Requirements
 [sha]: https://github.com/greghendershott/sha
 
 
-Documentation
-=============
+# Documentation
 
 * [Documentation](http://pkg-build.racket-lang.org/doc/aws@aws/index.html).
 
 
-Unit tests
-==========
+# Unit tests
 
 To simply use the library you don't need to run the unit tests. But if you
 want to run them:
