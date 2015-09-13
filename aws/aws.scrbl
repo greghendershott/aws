@@ -262,6 +262,8 @@ The region used for the S3 REST API. Should be a value from
 @hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
 "the Region column"] of the same row as the value for @racket[s3-host].
 
+@history[#:added "1.1"]
+
 }
 
 
@@ -400,6 +402,7 @@ be specified. For example:
   (ls "my-bucket/"))
 ]
 
+@history[#:added "1.6"]
 }
 
 
@@ -857,6 +860,8 @@ You may call this to determine whether @racket[resume-multipart-put/file]
 would attempt to do anything, for example if you want to get user
 confirmation.
 
+@history[#:added "1.5"]
+
 }
 
 
@@ -874,6 +879,8 @@ If @racket[incomplete-multipart-put/file] returns a non @racket[#f] value, use
 the information to resume the upload by @racket[upload-part]-ing the remaining
 parts, calling @racket[complete-multipart-upload], and returning the upload
 ID. Otherwise return @racket[#f].
+
+@history[#:added "1.5"]
 
 }
 
@@ -941,6 +948,8 @@ Get information about multipart uploads that haven't been ended with
 Get a list of already-uploaded parts for a multipart upload that
 hasn't been ended with @racket[complete-multipart-upload] or
 @racket[abort-multipart-upload].
+
+@history[#:added "1.3"]
 
 }
 
@@ -2051,6 +2060,8 @@ members of @racket[datum] are @racket[#f], depends on whether you asked
 those statistics to be returned by specifying them in @racket[statistics].  For
 example if @racket[statistics] includes the symbol @racket['Sum], then the
 @racket[sum] member will be non-@racket[#f], otherwise it will be @racket[#f].
+
+@history[#:added "1.4"]
 
 }
 
