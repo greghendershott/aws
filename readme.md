@@ -1,6 +1,7 @@
 [![Build Status](https://travis-ci.org/greghendershott/aws.png?branch=master)](https://travis-ci.org/greghendershott/aws)
 [![raco pkg install aws](https://img.shields.io/badge/raco_pkg_install-aws-aa00ff.svg)](http:pkgs.racket-lang.org/#[aws])
 [![Documentation](https://img.shields.io/badge/read-documentation-blue.svg)](http://pkg-build.racket-lang.org/doc/aws@aws/index.html)
+![MIT License](https://img.shields.io/badge/license-MIT-118811.svg)
 
 # Overview
 
