@@ -157,12 +157,12 @@
 
 (define s3-max-tries (make-parameter 5))
 
-(define/contract (call/input-request/retry method uri heads proc [try 1])
+(define/contract (call/input-request/retry method uri heads proc #:try [try 1])
   (->* (string?
         string?
         dict?
         (-> input-port? string? any/c))
-       (exact-positive-integer?)
+       (#:try exact-positive-integer?)
        any/c)
   (call/input-request
    "1.1" method uri heads
@@ -174,17 +174,17 @@
         (log-aws-warning
          @~a{@method @uri returned @code, try @(add1 try) of @(s3-max-tries) in @wait seconds.})
         (sleep wait)
-        (call/input-request/retry method uri heads (add1 try))]
+        (call/input-request/retry method uri heads proc #:try (add1 try))]
        [_ (proc in h)]))))
 
-(define/contract (call/output-request/retry method uri data len heads proc [try 1])
+(define/contract (call/output-request/retry method uri data len heads proc #:try [try 1])
   (->* (string?
         string?
         (or/c bytes? (output-port? . -> . void?))
         (or/c #f exact-nonnegative-integer?)
         dict?
         (-> input-port? string? any/c))
-       (exact-positive-integer?)
+       (#:try exact-positive-integer?)
        any/c)
   (call/output-request
    "1.1" method uri data len heads
@@ -196,7 +196,7 @@
         (log-aws-warning
          @~a{@method @uri returned @code, try @(add1 try) of @(s3-max-tries) in @wait seconds.})
         (sleep wait)
-        (call/output-request/retry method uri data len heads (add1 try))]
+        (call/output-request/retry method uri data len heads proc #:try (add1 try))]
        [_ (proc in h)]))))
 
 
