@@ -274,6 +274,21 @@ The scheme used for the S3 REST API.
 }
 
 
+@defparam[s3-max-tries v exact-positive-integer? #:value 5]{
+
+The number of attempts made for each HTTP request to S3.
+
+When S3 returns certain 50x response codes, an additional
+@racket[(sub1 (s3-max-tries))] attempts will be made. If none succeed, then a
+@racket[exn:fail:aws] exception is raised.
+
+A value of @racket[1] means try just once, in other words do not retry.
+
+@history[#:added "1.7"]
+
+}
+
+
 @subsection{Authentication signatures}
 
 @defproc[(bucket&path->uri
@@ -802,6 +817,10 @@ the last part.
 
 The parts are uploaded using a small number of worker threads, to get some
 parallelism and probably better performance.
+
+@history[#:changed "1.7" "Worker threads handle exceptions by returning work
+to the end of the to-do list to retry later, but no sooner than a delay that
+increases after each such retry."]
 
 }
 
