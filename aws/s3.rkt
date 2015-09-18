@@ -309,34 +309,43 @@
 
 (define/contract/provide (copy b+p/from b+p/to)
   (-> string? string? string?)
-  (define-values (u h)
-    (uri&headers b+p/to
-                 "PUT"
-                 (hasheq 'x-amz-copy-source
-                         (string-append "/" (uri-encode b+p/from)))))
-  (call/output-request/retry
-   "PUT" u
-   (λ (out) (void)) 0
-   h
-   (λ (in h)
-     (check-response in h)
-     ;; Just because check-response didn't raise an exception doesn't
-     ;; mean we're OK. Why? S3 docs say: "There are two opportunities
-     ;; for a copy request to return an error. One can occur when
-     ;; Amazon S3 receives the copy request and the other can occur
-     ;; while Amazon S3 is copying the files. If the error occurs
-     ;; before the copy operation starts, you receive a standard
-     ;; Amazon S3 error. If the error occurs during the copy
-     ;; operation, the error response is embedded in the 200 response.
-     ;; This means that a 200 response can contain either a success or
-     ;; an error. Make sure to design your application to parse the
-     ;; contents of the response and handle it appropriately."
-     (match (read-entity/bytes in h)
-       [(and (regexp "<Error>.*?</Error>") e)
-        (raise (header&response->exn:fail:aws
-                h e (current-continuation-marks)))]
-       [_ (void)])
-     h)))
+  (let loop ([try 1])
+    (define-values (u h)
+      (uri&headers b+p/to
+                   "PUT"
+                   (hasheq 'x-amz-copy-source
+                           (string-append "/" (uri-encode b+p/from)))))
+    (call/output-request/retry
+     "PUT" u
+     (λ (out) (void)) 0
+     h
+     (λ (in h)
+       ;; Just because check-response didn't raise an exception doesn't
+       ;; mean we're OK. Why? S3 docs say: "There are two opportunities
+       ;; for a copy request to return an error. One can occur when
+       ;; Amazon S3 receives the copy request and the other can occur
+       ;; while Amazon S3 is copying the files. If the error occurs
+       ;; before the copy operation starts, you receive a standard
+       ;; Amazon S3 error. If the error occurs during the copy
+       ;; operation, the error response is embedded in the 200 response.
+       ;; This means that a 200 response can contain either a success or
+       ;; an error. Make sure to design your application to parse the
+       ;; contents of the response and handle it appropriately."
+       (check-response in h)
+       (match (read-entity/bytes in h)
+         [(and e (regexp "<Error>.*?</Error>"))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{copy @b+p/from @b+p/to got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (regexp "<Error>.*?</Error>"))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [_ (void)])
+       h))))
 
 
 
@@ -354,27 +363,35 @@
   (-> string? (listof string?) string?)
   (when ((length paths) . > . 1000)
     (error 'delete-multiple "cannot delete more than 1000 items at a time"))
-  (define data
-    (string->bytes/utf-8 (xexpr->string
-                          `(Delete
-                            ,@(for/list ([p (in-list paths)])
-                                `(Object () (Key () ,p)))))))
-  (define-values (u h) (uri&headers (string-append bucket "/?delete")
-                                    "POST"
-                                    (hasheq 'Content-MD5 (bytes->Content-MD5 data))
-                                    data))
-  (call/output-request/retry "POST" u data (bytes-length data) h
-                             (λ (in h)
-                               (check-response in h)
-                               ;; Just because 200 OK doesn't mean no error.
-                               ;; Check for <Error> in the response.
-                               (define e (read-entity/bytes in h))
-                               (match e
-                                 [(regexp "<Error>.*?</Error>")
-                                  (raise (header&response->exn:fail:aws
-                                          h e (current-continuation-marks)))]
-                                 [_ (void)])
-                               h)))
+  (let loop ([try 1])
+    (define data
+      (string->bytes/utf-8 (xexpr->string
+                            `(Delete
+                              ,@(for/list ([p (in-list paths)])
+                                  `(Object () (Key () ,p)))))))
+    (define-values (u h) (uri&headers (string-append bucket "/?delete")
+                                      "POST"
+                                      (hasheq 'Content-MD5 (bytes->Content-MD5 data))
+                                      data))
+    (call/output-request/retry
+     "POST" u data (bytes-length data) h
+     (λ (in h)
+       ;; Just because 200 OK doesn't mean no error.
+       ;; Check for <Error> in the response.
+       (check-response in h)
+       (match (read-entity/bytes in h)
+         [(and e (regexp "<Error>.*?</Error>"))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{delete-multiple on bucket @bucket got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (regexp "<Error>.*?</Error>"))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [_ h])))))
 
 (define/contract/provide (head bucket+path)
   (-> string? string?)
@@ -761,23 +778,30 @@
   (log-aws-debug (tr "complete-multipart-upload" upid parts))
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
-  (define-values (u h) (uri&headers b+p "POST" '() xm))
-  (call/output-request/retry "POST" u xm (bytes-length xm) h
-                             (λ (in h)
-                               (check-response in h)
-                               ;; Even if we got a 200 OK status in
-                               ;; the header, there may be a delay of
-                               ;; minutes until S3 writes us the body
-                               ;; response. It may send us space chars
-                               ;; to help keep the connection open.
-                               (define x (read-entity/xexpr in h))
-                               ;; Check the response XML to see if
-                               ;; truly succeeded.
-                               (when (se-path* '(Error) x)
-                                 (log-aws-fatal (~a x))
-                                 (raise (header&response->exn:fail:aws
-                                         h x (current-continuation-marks))))
-                               x)))
+  (let loop ([try 1])
+    (define-values (u h) (uri&headers b+p "POST" '() xm))
+    (call/output-request/retry
+     "POST" u xm (bytes-length xm) h
+     (λ (in h)
+       ;; Even if we got a 200 OK status in the header, there may be a
+       ;; delay of minutes until S3 writes us the body response. It may
+       ;; send us space chars to help keep the connection open.
+       ;; Examine the response XML to see if truly succeeded.
+       (check-response in h)
+       (define xp (read-entity/xexpr in h))
+       (match xp
+         [(and e (? (λ (xp) (se-path* '(Error) xp))))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{complete-multipart-upload @upid got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (? (λ (xp) (se-path* '(Error) xp))))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [xp xp])))))
 
 (define/contract (parts->xml-bytes parts)
   (-> (listof (cons/c s3-multipart-number/c string?)) bytes?)
