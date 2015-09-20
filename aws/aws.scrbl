@@ -435,8 +435,8 @@ The return value of @racket[ls/proc] is the final return value of
 For example, @racket[ls] is implemented as simply:
 
 @racketblock[
-(map (lambda (x) (first-tag-value x 'Key))
-     (ls/proc b+p append '()))
+  (map (λ (x) (se-path* '(Key) x))
+       (ls/proc b+p append '()))
 ]
 
 }
@@ -2484,38 +2484,6 @@ which encodes some extra characters compared to RFC 2396.  Doing so is
 important especially for SDB and its @tt{Select} action: The SQL-like statement
 contains characters like @racket[#\*], @racket[#\(], and @racket[#\)], which
 SDB requires to be percent-encoded.
-
-}
-
-
-@defproc[(tags
-[xexpr xexpr?]
-[tag symbol?]
-[direct-child-of (or/c #f symbol?) #f]
-) (listof xexpr?)]{
-
-Given @racket[xexpr] return a list of all the elements starting with
-@racket[tag]. If @racket[direct-child-of] is @racket[#f], it will return
-elements at any depth. It will even return nested elements multiple times --
-once on their own, and once within their parent.  If you only want elements
-that have a specific immediate parent, set @racket[direct-child-of] to that
-symbol.
-
-Although there are more sophisticated and correct ways to make sense of XML,
-this is useful when the XML structure is small and predictable, and you care
-about extracting a few specific elements.
-
-}
-
-
-@defproc[(first-tag-value
-[xexpr xexpr?]
-[tag symbol?]
-[def any/c #f]
-) string?]{
-
-Given @racket[xexpr], return the value of just the first element having tag
-@racket[tag], or if none found, @racket[def].
 
 }
 
