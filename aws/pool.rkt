@@ -3,7 +3,8 @@
 (require racket/async-channel
          racket/contract/base
          racket/contract/region
-         racket/format)
+         racket/format
+         "util.rkt")
 
 (provide pool?
          make-worker-pool
@@ -37,7 +38,7 @@
         (define f (async-channel-get todo))
         (with-handlers ([exn:fail?
                          (λ (e)
-                           (log-error
+                           (log-aws-warning
                             @~a{Worker got exn:
                                   @e;
                                   Will retry job later.})
