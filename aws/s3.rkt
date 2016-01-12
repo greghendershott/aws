@@ -239,11 +239,13 @@
   (define b+p (string-append bucket+path "?acl"))
   (get/proc b+p read-entity/xexpr heads))
 
-(define/contract/provide (put-acl bucket+path acl)
-  (-> string? xexpr? void)
+(define/contract/provide (put-acl bucket+path acl [heads '()])
+  (->* (string? (or/c xexpr? #f)) (dict?) void?)
   (define b+p (string-append bucket+path "?acl"))
-  (define data (string->bytes/utf-8 (xexpr->string acl)))
-  (void (put/bytes b+p data "application/xml")))
+  (define data (if acl
+                   (string->bytes/utf-8 (xexpr->string acl))
+                   #""))
+  (void (put/bytes b+p data "application/xml" heads)))
 
 (define/contract/provide (ls/proc b+p f init [max-each 1000]
                                   #:delimiter [delimiter #f])
@@ -307,14 +309,16 @@
     (match-define (list contents heads acl) x)
     (list (se-path* '(Key) contents) heads acl)))
 
-(define/contract/provide (copy b+p/from b+p/to)
-  (-> string? string? string?)
+(define/contract/provide (copy b+p/from b+p/to [heads '()])
+  (->* (string? string?) (dict?) string?)
   (let loop ([try 1])
     (define-values (u h)
       (uri&headers b+p/to
                    "PUT"
-                   (hasheq 'x-amz-copy-source
-                           (string-append "/" (uri-encode b+p/from)))))
+                   (dict-set* 
+                    heads
+                    'x-amz-copy-source
+                    (string-append "/" (uri-encode b+p/from)))))
     (call/output-request/retry
      "PUT" u
      (λ (out) (void)) 0

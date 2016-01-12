@@ -539,6 +539,7 @@ list must have no more than 1000 elements.
 @defproc[(copy
 [bucket+path/from string?]
 [bucket+path/to string?]
+[heads dict? '()]
 ) string?]{
 
 @margin-note{Tip: To rename an object, @racket[copy] it then @racket[delete]
@@ -549,7 +550,10 @@ including its metadata. Both names are of the form
 @racket["bucket/path/to/resource"].
 
 It is not an error to copy to an existing object (it will be replaced). It is
-even OK to copy an existing object to itself.
+even OK to copy an existing object to itself, as long as @racket[heads] implies
+metadata changes.
+
+@history[#:changed "1.8" @elem{Added the @racket[heads] argument.}]
 
 }
 
@@ -572,12 +576,19 @@ S3 responds with an XML representation of the ACL, which is returned as an
 
 @defproc[(put-acl
 [bucket+path string?]
-[acl xexpr?]
+[acl (or/c xexpr? #f)]
+[heads dict? '()]
 ) void]{
 
 Make a @tt{PUT} request to set the
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
 "ACL"] of the object  @racket[bucket+path] to @racket[acl].
+
+If @racket[acl] is @racket[#f], then the request body is empty and ACL
+changes must be provided by @racket[heads] (e.g., as a canned ACL
+using @racket['x-amz-acl]).
+
+@history[#:changed "1.8" @elem{Added the @racket[heads] argument and allow @racket[#f] for @racket[acl].}]
 
 }
 
