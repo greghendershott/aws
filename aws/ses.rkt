@@ -132,9 +132,8 @@
 
 (define/contract/provide (list-verified-email-addresses)
   (-> (listof string?))
-  (define r (request `((Action "ListVerifiedEmailAddresses"))))
-  (for/list ([x (in-list (tags r 'member))])
-      (last x)))
+  (se-path*/list '(VerifiedEmailAddresses member)
+                 (request `((Action "ListVerifiedEmailAddresses")))))
 
 (struct send-quota (sent-last-24-hours max-24-hour-send max-send-rate)
         #:transparent)
@@ -152,7 +151,7 @@
 (define/contract/provide (get-send-statistics)
   (-> (listof send-statistic?))
   (define r (request `((Action "GetSendStatistics"))))
-  (for/list ([x (in-list (tags r 'member))])
+  (for/list ([x (in-list (se-path*/elements '(member) r))])
       (send-statistic (str x 'Timestamp)
                       (num x 'DeliveryAttempts)
                       (num x 'Rejects)
@@ -162,24 +161,13 @@
 (define (num x t)
   (string->number (str x t)))
 (define (str x t)
-  (last (first (tags x t))))
+  (se-path* (list t) x))
 
 (module+ test
   (require rackunit
            "tests/data.rkt")
 
   (when (test-data-exists?)
-    (define-syntax-rule (400-error? code message expr)
-      (check-true
-       (with-handlers
-           ([exn:fail:aws?
-             (lambda (exn)
-               (match exn
-                 [(exn:fail:aws _ _ 400 "Bad Request" code msg) #t]
-                 [else #f]))])
-         ;; We expect expr to raise an exception. Return #f if it doesn't
-         (begin expr #f))))
-
     (test-case
      "miscellaneous"
      (check-true (list? (list-verified-email-addresses)))
@@ -190,6 +178,16 @@
                  #:subject "test good address"
                  #:body "test good address"))
 
+    (define-syntax-rule (400-error? code message expr)
+      (check-true
+       (with-handlers
+           ([exn:fail:aws?
+             (lambda (exn)
+               (match exn
+                 [(exn:fail:aws _ _ 400 "Bad Request" code msg) #t]
+                 [else #f]))])
+         ;; We expect expr to raise an exception. Return #f if it doesn't
+           (begin expr #f))))
     (test-case
      "400 errors"
      (400-error? "InvalidParameterValue"

@@ -1,4 +1,4 @@
-#lang racket/base
+#lang at-exp racket/base
 
 (require file/md5
          http/head
@@ -11,20 +11,24 @@
          racket/dict
          racket/format
          racket/list
+         racket/math
          racket/match
          racket/port
          racket/string
+         (only-in sha bytes->hex-string)
          xml
          "exn.rkt"
          "keys.rkt"
          "pool.rkt"
          "sigv4.rkt"
-         "util.rkt")
+         "util.rkt"
+         "xml-path.rkt")
 
 (provide (contract-out [s3-scheme (parameter/c string?)]
                        [s3-host (parameter/c string?)]
                        [s3-region (parameter/c string?)]
                        [s3-path-requests? (parameter/c boolean?)]
+                       [s3-max-tries (parameter/c exact-positive-integer?)]
                        [path->mime-proc (parameter/c (-> path? string?))]))
 
 (module+ test
@@ -149,6 +153,54 @@
 
 
 
+;;; request/retry
+
+(define s3-max-tries (make-parameter 5))
+
+(define/contract (call/input-request/retry method uri heads proc #:try [try 1])
+  (->* (string?
+        string?
+        dict?
+        (-> input-port? string? any/c))
+       (#:try exact-positive-integer?)
+       any/c)
+  (call/input-request
+   "1.1" method uri heads
+   (λ (in h)
+     (match (extract-http-code h)
+       [(and code (or 500 503 504))
+        #:when (<= try (s3-max-tries))
+        (define wait (sqr try))
+        (log-aws-warning
+         @~a{@method @uri returned @code, try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+        (sleep wait)
+        (call/input-request/retry method uri heads proc #:try (add1 try))]
+       [_ (proc in h)]))))
+
+(define/contract (call/output-request/retry method uri data len heads proc #:try [try 1])
+  (->* (string?
+        string?
+        (or/c bytes? (output-port? . -> . void?))
+        (or/c #f exact-nonnegative-integer?)
+        dict?
+        (-> input-port? string? any/c))
+       (#:try exact-positive-integer?)
+       any/c)
+  (call/output-request
+   "1.1" method uri data len heads
+   (λ (in h)
+     (match (extract-http-code h)
+       [(and code (or 500 503 504))
+        #:when (<= try (s3-max-tries))
+        (define wait (sqr try))
+        (log-aws-warning
+         @~a{@method @uri returned @code, try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+        (sleep wait)
+        (call/output-request/retry method uri data len heads proc #:try (add1 try))]
+       [_ (proc in h)]))))
+
+
+
 ;;; create/list/delete buckets
 
 ;; `location` allows specifying a region. For the valid values, see the Region
@@ -172,61 +224,28 @@
 (define/contract/provide (list-buckets)
   (-> (listof string?))
   (define h (add-auth-heads "/" "GET"))
-  (define xpr (call/input-request "1.1" "GET" (s3-host) h read-entity/xexpr))
-  (map third (tags xpr 'Name 'Bucket)))
+  (define xpr (call/input-request/retry "GET" (s3-host) h read-entity/xexpr))
+  (se-path*/list '(Bucket Name) xpr))
 
-(define/contract/provide (delete bucket+path)
-  (-> string? string?)
-  (define-values (u h) (uri&headers bucket+path "DELETE" '()))
-  (call/input-request "1.1" "DELETE" u h
-                      (λ (in h)
-                        (check-response in h)
-                        h)))
-
-(define/contract/provide (delete-multiple bucket paths)
-  (-> string? (listof string?) string?)
-  (when ((length paths) . > . 1000)
-    (error 'delete-multiple "cannot delete more than 1000 items at a time"))
-  (define data
-    (string->bytes/utf-8 (xexpr->string
-                          `(Delete
-                            ,@(for/list ([p (in-list paths)])
-                                `(Object () (Key () ,p)))))))
-  (define-values (u h) (uri&headers (string-append bucket "/?delete")
-                                    "POST"
-                                    (hasheq 'Content-MD5 (bytes->Content-MD5 data))
-                                    data))
-  (call/output-request "1.1" "POST" u data (bytes-length data) h
-                       (λ (in h)
-                         (check-response in h)
-                         ;; Just because 200 OK doesn't mean no error.
-                         ;; Check for <Error> in the response.
-                         (define e (read-entity/bytes in h))
-                         (match e
-                           [(regexp "<Error>.*?</Error>")
-                            (raise (header&response->exn:fail:aws
-                                    h e (current-continuation-marks)))]
-                           [_ (void)])
-                         h)))
-
-(define/contract/provide (head bucket+path)
-  (-> string? string?)
-  (define-values (u h) (uri&headers bucket+path "HEAD"))
-  (call/input-request "1.1" "HEAD" u h
-                      (λ (in h)
-                        (check-response in h)
-                        h)))
+(define/contract/provide (bucket-location bucket [default "us-east-1"])
+  (->* (string?) (string?) string?)
+  (parameterize ([s3-path-requests? #t])
+    (match (get/proc (string-append bucket "/?location") read-entity/xexpr)
+      [`(LocationConstraint ,_ ,location) location]
+      [_ default])))
 
 (define/contract/provide (get-acl bucket+path [heads '()])
   (->* (string?) (dict?) xexpr?)
   (define b+p (string-append bucket+path "?acl"))
   (get/proc b+p read-entity/xexpr heads))
 
-(define/contract/provide (put-acl bucket+path acl)
-  (-> string? xexpr? void)
+(define/contract/provide (put-acl bucket+path acl [heads '()])
+  (->* (string? (or/c xexpr? #f)) (dict?) void?)
   (define b+p (string-append bucket+path "?acl"))
-  (define data (string->bytes/utf-8 (xexpr->string acl)))
-  (void (put/bytes b+p data "application/xml")))
+  (define data (if acl
+                   (string->bytes/utf-8 (xexpr->string acl))
+                   #""))
+  (void (put/bytes b+p data "application/xml" heads)))
 
 (define/contract/provide (ls/proc b+p f init [max-each 1000]
                                   #:delimiter [delimiter #f])
@@ -249,19 +268,19 @@
                                               '()))))
     (define uri (bucket+path->uri (string-append b "/?" qp)))
     (define h (add-auth-heads uri "GET"))
-    (define xpr (call/input-request "1.1" "GET" uri  h
-                                    (λ (in h)
-                                      (check-response in h)
-                                      (read-entity/xexpr in h))))
-    (define contents (tags xpr 'Contents))
+    (define xpr (call/input-request/retry "GET" uri  h
+                                          (λ (in h)
+                                            (check-response in h)
+                                            (read-entity/xexpr in h))))
+    (define contents (se-path*/elements '(Contents) xpr))
     (define prefixes (if delimiter
-                         (tags xpr 'CommonPrefixes)
+                         (se-path*/elements '(CommonPrefixes) xpr)
                          null))
-    (define truncated? (equal? "true" (first-tag-value xpr 'IsTruncated)))
+    (define truncated? (equal? "true" (se-path* '(IsTruncated) xpr)))
     (define next-marker (and truncated?
                              (if delimiter
-                                 (first-tag-value xpr 'NextMarker)
-                                 (first-tag-value (last contents) 'Key))))
+                                 (se-path* '(NextMarker) xpr)
+                                 (se-path* '(Key) (last contents)))))
     (let* ([cum (if (null? contents)
                     cum
                     (f cum contents))]
@@ -274,58 +293,117 @@
 
 (define/contract/provide (ls b+p)
   (-> string? (listof string?))
-  (map (λ (x) (first-tag-value x 'Key))
+  (map (λ (x) (se-path* '(Key) x))
        (ls/proc b+p append '())))
 
 (define/contract/provide (ll* b+p)
   (-> string? (listof (list/c xexpr? string? xexpr?)))
   (define-values (b p) (bucket+path->bucket&path b+p))
   (for/list ([x (in-list (ls/proc b+p append '()))])
-    (define path (string-append b "/" (first-tag-value x 'Key)))
+    (define path (string-append b "/" (se-path* '(Key) x)))
     (list x (head path) (get-acl path))))
 
 (define/contract/provide (ll b+p)
   (-> string? (listof (list/c string? string? xexpr?)))
   (for/list ([x (in-list (ll* b+p))])
     (match-define (list contents heads acl) x)
-    (list (first-tag-value contents 'Key) heads acl)))
+    (list (se-path* '(Key) contents) heads acl)))
 
-(define/contract/provide (copy b+p/from b+p/to)
-  (-> string? string? string?)
-  (define-values (u h)
-    (uri&headers b+p/to
-                 "PUT"
-                 (hasheq 'x-amz-copy-source
-                         (string-append "/" (uri-encode b+p/from)))))
-  (call/output-request "1.1" "PUT" u
-                       (λ (out) (void))
-                       0
-                       h
-                       (λ (in h)
-                         (check-response in h)
-                         ;; Just because check-response didn't raise
-                         ;; an exception doesn't mean we're OK. Why?
-                         ;; S3 docs say: "There are two opportunities
-                         ;; for a copy request to return an error. One
-                         ;; can occur when Amazon S3 receives the copy
-                         ;; request and the other can occur while
-                         ;; Amazon S3 is copying the files. If the
-                         ;; error occurs before the copy operation
-                         ;; starts, you receive a standard Amazon S3
-                         ;; error. If the error occurs during the copy
-                         ;; operation, the error response is embedded
-                         ;; in the 200 response. This means that a 200
-                         ;; response can contain either a success or
-                         ;; an error. Make sure to design your
-                         ;; application to parse the contents of the
-                         ;; response and handle it appropriately."
-                         (match (read-entity/bytes in h)
-                           [(and (regexp "<Error>.*?</Error>") e)
-                            (raise (header&response->exn:fail:aws
-                                    h e (current-continuation-marks)))]
-                           [_ (void)])
-                         h)))
+(define/contract/provide (copy b+p/from b+p/to [heads '()])
+  (->* (string? string?) (dict?) string?)
+  (let loop ([try 1])
+    (define-values (u h)
+      (uri&headers b+p/to
+                   "PUT"
+                   (dict-set* 
+                    heads
+                    'x-amz-copy-source
+                    (string-append "/" (uri-encode b+p/from)))))
+    (call/output-request/retry
+     "PUT" u
+     (λ (out) (void)) 0
+     h
+     (λ (in h)
+       ;; Just because check-response didn't raise an exception doesn't
+       ;; mean we're OK. Why? S3 docs say: "There are two opportunities
+       ;; for a copy request to return an error. One can occur when
+       ;; Amazon S3 receives the copy request and the other can occur
+       ;; while Amazon S3 is copying the files. If the error occurs
+       ;; before the copy operation starts, you receive a standard
+       ;; Amazon S3 error. If the error occurs during the copy
+       ;; operation, the error response is embedded in the 200 response.
+       ;; This means that a 200 response can contain either a success or
+       ;; an error. Make sure to design your application to parse the
+       ;; contents of the response and handle it appropriately."
+       (check-response in h)
+       (match (read-entity/bytes in h)
+         [(and e (regexp "<Error>.*?</Error>"))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{copy @b+p/from @b+p/to got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (regexp "<Error>.*?</Error>"))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [_ (void)])
+       h))))
 
+
+
+;;; delete/head objects in buckets
+
+(define/contract/provide (delete bucket+path)
+  (-> string? string?)
+  (define-values (u h) (uri&headers bucket+path "DELETE" '()))
+  (call/input-request/retry "DELETE" u h
+                            (λ (in h)
+                              (check-response in h)
+                              h)))
+
+(define/contract/provide (delete-multiple bucket paths)
+  (-> string? (listof string?) string?)
+  (when ((length paths) . > . 1000)
+    (error 'delete-multiple "cannot delete more than 1000 items at a time"))
+  (let loop ([try 1])
+    (define data
+      (string->bytes/utf-8 (xexpr->string
+                            `(Delete
+                              ,@(for/list ([p (in-list paths)])
+                                  `(Object () (Key () ,p)))))))
+    (define-values (u h) (uri&headers (string-append bucket "/?delete")
+                                      "POST"
+                                      (hasheq 'Content-MD5 (bytes->Content-MD5 data))
+                                      data))
+    (call/output-request/retry
+     "POST" u data (bytes-length data) h
+     (λ (in h)
+       ;; Just because 200 OK doesn't mean no error.
+       ;; Check for <Error> in the response.
+       (check-response in h)
+       (match (read-entity/bytes in h)
+         [(and e (regexp "<Error>.*?</Error>"))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{delete-multiple on bucket @bucket got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (regexp "<Error>.*?</Error>"))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [_ h])))))
+
+(define/contract/provide (head bucket+path)
+  (-> string? string?)
+  (define-values (u h) (uri&headers bucket+path "HEAD"))
+  (call/input-request/retry "HEAD" u h
+                            (λ (in h)
+                              (check-response in h)
+                              h)))
 
 
 ;;; get
@@ -344,10 +422,10 @@
   (define-values (u h) (uri&headers bucket+path
                                     "GET"
                                     (maybe-add-range-header heads beg end)))
-  (call/input-request "1.1" "GET" u h
-                      (λ (in h)
-                        (check-response in h)
-                        (reader in h))))
+  (call/input-request/retry "GET" u h
+                            (λ (in h)
+                              (check-response in h)
+                              (reader in h))))
 
 (define (maybe-add-range-header heads beg end)
   (cond [(and beg end (< beg end))
@@ -374,7 +452,7 @@
 (define/contract/provide (get/file bucket+path
                                    path
                                    [heads '()]
-                                   #:mode [mode-flag 'binary]
+                                   #:mode [mode 'binary]
                                    #:exists [exists-flag 'error])
   (->* (string? path?)
        (dict?
@@ -388,7 +466,7 @@
                                       (λ (out)
                                         (read-entity/port in h out)
                                         (void))
-                                      #:mode mode-flag
+                                      #:mode mode
                                       #:exists exists-flag))
             heads))
 
@@ -478,7 +556,7 @@
         (display-chunk data this-sig)
         (when (> data-len 0)
           (display-chunks this-sig (- data-len chunk-len))))))
-  (call/output-request "1.1" "PUT" u chunk-writer #f h check-response))
+  (call/output-request/retry "PUT" u chunk-writer #f h check-response))
 
 (define/contract (display-chunk data sig)
   (-> bytes? string? any)
@@ -519,18 +597,12 @@
                             'Content-MD5  (bytes->Content-MD5 data)
                             'Expect       "100-continue")
                  data))
-  (call/output-request "1.1" "PUT" u data data-len h check-response))
-  ;; (put bucket+path
-  ;;      (λ (out) (display data out))
-  ;;      (bytes-length data)
-  ;;      mime-type
-  ;;      (dict-set heads
-  ;;                'Content-MD5 (bytes->Content-MD5 data))))
+  (call/output-request/retry "PUT" u data data-len h check-response))
 
 (define/contract/provide (put/file bucket+path
                                    path
                                    #:mime-type [mime-type #f]
-                                   #:mode [mode-flag 'binary]
+                                   #:mode [mode 'binary]
                                    #:chunk-len [chunk-len aws-chunk-len-default])
   (->* (string?
         path?)
@@ -539,9 +611,8 @@
         #:chunk-len aws-chunk-len/c)
        string?)
   (put bucket+path
-       (λ (out) (call-with-input-file* path
-                                       (λ (in) (copy-port in out))
-                                       #:mode mode-flag))
+       (λ (out) (call-with-input-file* path #:mode mode
+                  (λ (in) (copy-port in out))))
        (file-size path)
        (or mime-type ((path->mime-proc) path))
        (hasheq 'Content-MD5 (file->Content-MD5 path)
@@ -617,7 +688,7 @@
 (define/contract/provide (multipart-put/file bucket+path
                                              path
                                              #:mime-type [mime-type #f]
-                                             #:mode [mode-flag 'binary]
+                                             #:mode [mode 'binary]
                                              #:part-size [_part-size #f])
   (->* (string?
         path?)
@@ -625,21 +696,30 @@
         #:mode (or/c 'binary 'text)
         #:part-size s3-multipart-size/c)
        string?)
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (multipart-put bucket+path
+                 num-parts
+                 (get-file-part path mode part-size)
+                 (or mime-type ((path->mime-proc) path))
+                 (hasheq 'Content-Disposition (path->Content-Disposition path))))
+
+(define/contract (file-sizes-and-parts path _part-size)
+  (-> path?
+      (or/c #f s3-multipart-size/c)
+      (values exact-nonnegative-integer?
+              s3-multipart-size/c
+              s3-multipart-number/c))
   (define total-size (file-size path))
   (define part-size (or _part-size (minimal-part-size total-size)))
   (define num-parts (ceiling (/ total-size part-size)))
-  (define (get-part part-num)
-    ;; Each get-part does its own file open, so we're OK to
-    ;; position/read the same file from multiple threads.
-    (define (read-part in)
+  (values total-size part-size num-parts))
+
+
+(define ((get-file-part path mode part-size) part-num)
+  (call-with-input-file* path #:mode mode
+    (λ (in)
       (file-position in (* part-num part-size))
-      (read-bytes part-size in))
-    (call-with-input-file* path read-part #:mode mode-flag))
-  (multipart-put bucket+path
-                 num-parts
-                 get-part
-                 (or mime-type ((path->mime-proc) path))
-                 (hasheq 'Content-Disposition (path->Content-Disposition path))))
+      (read-bytes part-size in))))
 
 (define/contract (minimal-part-size total-size)
   (-> exact-nonnegative-integer? s3-multipart-size/c)
@@ -667,18 +747,18 @@
   (define-values (u h) (uri&headers b+p
                                     "POST"
                                     (dict-set* heads 'Content-Type mime-type)))
-  (define x (call/input-request "1.1" "POST" u h
-                                (λ (in h)
-                                  (check-response in h)
-                                  (read-entity/xexpr in h))))
-  (define upid (first-tag-value x 'UploadId))
+  (define x (call/input-request/retry "POST" u h
+                                      (λ (in h)
+                                        (check-response in h)
+                                        (read-entity/xexpr in h))))
+  (define upid (se-path* '(UploadId) x))
   (log-aws-debug (tr "initiate-multipart-upload returned" upid))
   upid)
 
 (define/contract/provide (upload-part bucket+path upid part bstr)
   (-> string? string? s3-multipart-number/c bytes?
       (cons/c s3-multipart-number/c string?))
-  (log-aws-debug (tr "upload-part start" upid part))
+  (log-aws-debug @~a{upload-part @part start})
   (define b+p (string-append bucket+path
                              "?partNumber=" (number->string part)
                              "&uploadId=" upid))
@@ -688,13 +768,13 @@
                  (hasheq 'Expect "100-continue"
                          'Content-MD5 (bytes->Content-MD5 bstr))
                  bstr))
-  (call/output-request "1.1" "PUT" u bstr (bytes-length bstr) h
-                       (λ (in h)
-                         (check-response in h)
-                         (read-entity/bytes in h)
-                         (define part-id (extract-field "ETag" h))
-                         (log-aws-debug (tr "upload-part response" part-id))
-                         (cons part part-id))))
+  (call/output-request/retry "PUT" u bstr (bytes-length bstr) h
+                             (λ (in h)
+                               (check-response in h)
+                               (read-entity/bytes in h)
+                               (define part-id (extract-field "ETag" h))
+                               (log-aws-debug @~a{upload-part @part response @part-id})
+                               (cons part part-id))))
 
 (define/contract/provide (complete-multipart-upload bucket+path upid parts)
   (-> string? string? (listof (cons/c s3-multipart-number/c string?))
@@ -702,23 +782,30 @@
   (log-aws-debug (tr "complete-multipart-upload" upid parts))
   (define xm (parts->xml-bytes parts))
   (define b+p (string-append bucket+path "?uploadId=" upid))
-  (define-values (u h) (uri&headers b+p "POST" '() xm))
-  (call/output-request "1.1" "POST" u xm (bytes-length xm) h
-                       (λ (in h)
-                         (check-response in h)
-                         ;; Even if we got a 200 OK status in the
-                         ;; header, there may be a delay of minutes
-                         ;; until S3 writes us the body response. It
-                         ;; may send us space chars to help keep the
-                         ;; connection open.
-                         (define x (read-entity/xexpr in h))
-                         ;; Check the response XML to see if
-                         ;; truly succeeded.
-                         (when (first-tag-value x 'Error)
-                           (log-aws-fatal (tr x))
-                           (raise (header&response->exn:fail:aws
-                                   h x (current-continuation-marks))))
-                         x)))
+  (let loop ([try 1])
+    (define-values (u h) (uri&headers b+p "POST" '() xm))
+    (call/output-request/retry
+     "POST" u xm (bytes-length xm) h
+     (λ (in h)
+       ;; Even if we got a 200 OK status in the header, there may be a
+       ;; delay of minutes until S3 writes us the body response. It may
+       ;; send us space chars to help keep the connection open.
+       ;; Examine the response XML to see if truly succeeded.
+       (check-response in h)
+       (define xp (read-entity/xexpr in h))
+       (match xp
+         [(and e (? (λ (xp) (se-path* '(Error) xp))))
+          #:when (<= try (s3-max-tries))
+          (define wait (sqr try))
+          (log-aws-warning
+           @~a{complete-multipart-upload @upid got 200 OK but error:
+               @e
+               Try @(add1 try) of @(s3-max-tries) in @wait seconds.})
+          (sleep wait)
+          (loop (add1 try))]
+         [(and e (? (λ (xp) (se-path* '(Error) xp))))
+          (raise (header&response->exn:fail:aws h e (current-continuation-marks)))]
+         [xp xp])))))
 
 (define/contract (parts->xml-bytes parts)
   (-> (listof (cons/c s3-multipart-number/c string?)) bytes?)
@@ -738,10 +825,10 @@
   ;; TODO: Handle multiple IsTruncated responses
   (define b+p (string-append bucket "/?uploads"))
   (define-values (u h) (uri&headers b+p "GET" '()))
-  (call/input-request "1.1" "GET" u h
-                      (λ (in h)
-                        (check-response in h)
-                        (read-entity/xexpr in h))))
+  (call/input-request/retry "GET" u h
+                            (λ (in h)
+                              (check-response in h)
+                              (read-entity/xexpr in h))))
 
 (define/contract/provide (list-multipart-upload-parts bucket+path upid)
   (-> string? string? (listof xexpr?))
@@ -752,22 +839,112 @@
                                         [part-number-marker ,marker])))
     (define b+p (string-append bucket+path "?" qp))
     (define-values (u h) (uri&headers b+p "GET" '()))
-    (define xe (call/input-request "1.1" "GET" u h
-                                   (λ (in h)
-                                     (check-response in h)
-                                     (read-entity/xexpr in h))))
-    (match* ((first-tag-value xe 'IsTruncated) (append parts (tags xe 'Part)))
-      [("true" parts) (loop parts (first-tag-value xe 'NextPartNumberMarker))]
+    (define xe (call/input-request/retry "GET" u h
+                                         (λ (in h)
+                                           (check-response in h)
+                                           (read-entity/xexpr in h))))
+    (match* ((se-path* '(IsTruncated) xe) (append parts (se-path*/elements '(Part) xe)))
+      [("true" parts) (loop parts (se-path* '(NextPartNumberMarker) xe))]
       [(_      parts) parts])))
 
 (define/contract/provide (abort-multipart-upload bucket+path upid)
   (-> string? string? void)
   (define b+p (string-append bucket+path"?uploadId=" upid))
   (define-values (u h) (uri&headers b+p "DELETE" '()))
-  (call/input-request "1.1" "DELETE" u h
-                      (λ (in h)
-                        (check-response in h)
-                        h)))
+  (call/input-request/retry "DELETE" u h
+                            (λ (in h)
+                              (check-response in h)
+                              h)))
+
+;; EXPERIMENTAL.
+;; Return #f if no multipart upload initiated for b+p. Otherwise,
+;; return a cons of an upload ID and a list of parts that were
+;; successfully uploaded previously.
+(define/contract/provide (incomplete-multipart-put/file b+p
+                                                        path
+                                                        #:mode [mode 'binary]
+                                                        #:part-size [_part-size #f])
+  (->* (string?
+        path?)
+       (#:mode (or/c 'binary 'text)
+        #:part-size s3-multipart-size/c)
+       (or/c #f
+             (cons/c string?
+                     (listof (cons/c s3-multipart-number/c string?)))))
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (define get-part (get-file-part path mode part-size))
+  (define (verify? part-num expected-etag)
+    (define bstr (get-part (sub1 part-num)))
+    (define file-etag (bytes->hex-string (md5 (open-input-bytes bstr) #f)))
+    (equal? expected-etag file-etag))
+  (define-values (bucket key) (bucket+path->bucket&path b+p))
+  (for/or ([mpu (in-list (se-path*/elements '(Upload) (list-multipart-uploads bucket)))])
+    (and
+     (equal? key (se-path* '(Key) mpu))
+     (let* ([upid (se-path* '(UploadId) mpu)]
+            [parts (list-multipart-upload-parts b+p upid)])
+       (define xs
+         (filter-map
+          values
+          (for/list ([p (in-list parts)])
+            (define this-part-num (string->number (se-path* '(PartNumber) p)))
+            (define this-part-etag (second (se-path*/list '(ETag) p)))
+            (and (<= this-part-num num-parts)
+                 (verify? this-part-num this-part-etag)
+                 (cons this-part-num this-part-etag)))))
+       ;; If no parts matched, keep going in case it's another MUL for
+       ;; the same b+p and path
+       (and (not (empty? xs))
+            (cons upid xs))))))
+
+;; ;; FOR REPL DEV/TESTING ONLY
+;; (define tmp (build-path "/tmp/multipart-put-test-file"))
+;; (call-with-output-file tmp #:exists 'replace
+;;   (λ (out)
+;;     (for ([n (in-range 20)])
+;;       (write-bytes (make-bytes s3-multipart-size-minimum n) out))))
+;; (define (foo)
+;;   (multipart-put/file "greghendershott/foo" tmp))
+
+;; EXPERIMENTAL.
+;; If incomplete-multipart-put/file returns a non #f result, use it to
+;; resume the upload of the not-yet-uploaded parts.
+(define/contract/provide (resume-multipart-put/file b+p
+                                                    path
+                                                    #:mime-type [mime-type #f]
+                                                    #:mode [mode 'binary]
+                                                    #:part-size [_part-size #f])
+  (->* (string?
+        path?)
+       (#:mime-type (or/c #f string?)
+        #:mode (or/c 'binary 'text)
+        #:part-size s3-multipart-size/c)
+       (or/c #f string?))
+  (define-values (total-size part-size num-parts) (file-sizes-and-parts path _part-size))
+  (log-aws-debug @~a{Checking for existing multipart upload of @path to @b+p})
+  (match (incomplete-multipart-put/file b+p
+                                        path
+                                        #:mode mode
+                                        #:part-size part-size)
+    [#f #f]
+    [(cons upid previously-uploaded-parts)
+     (log-aws-debug @~a{Resuming existing upload @upid})
+     (define get-part (get-file-part path mode part-size))
+     (define parts
+       (with-worker-pool (min 4 num-parts)
+         (λ (pool)
+           (for/list ([n (in-range num-parts)])
+             (add-job
+              pool
+              (λ ()
+                (match (assq (add1 n) previously-uploaded-parts)
+                  [(cons part-num etag)
+                   (log-aws-debug @~a{Part @part-num previously uploaded OK @etag})
+                   (cons part-num (string-append "\"" etag "\""))]
+                  [#f (upload-part b+p upid (add1 n) (get-part n))]))))
+           (get-results pool num-parts))))
+     (complete-multipart-upload b+p upid parts)
+     upid]))
 
 
 
@@ -962,7 +1139,7 @@
                     (unless (null? xs)
                       (define x (car xs))
                       (check-equal? (car x) (if more? 'CommonPrefixes 'Contents))
-                      (check-equal? (first-tag-value x (if more? 'Prefix 'Key))
+                      (check-equal? (se-path* (if more? '(Prefix) '(Key)) x)
                                     (string-append prefix (car p) (if more? "/" "")))))
                   (void))
          (when more?
@@ -984,16 +1161,16 @@
        (check-equal? (ls (string-append bucket "/")) (list (test/path)))
 
        ;; sign-uri
-       (check-equal? (call/input-request "1.1" "GET"
-                                         (sign-uri b+p "GET" 60 '())
-                                         '()
-                                         read-entity/bytes)
+       (check-equal? (call/input-request/retry "GET"
+                                               (sign-uri b+p "GET" 60 '())
+                                               '()
+                                               read-entity/bytes)
                      data)
        (let* ([expire 3]
               [uri (sign-uri b+p "GET" expire '())]
               [_ (sleep (add1 expire))]
-              [x (call/input-request "1.1" "GET" uri '() read-entity/xexpr)])
-         (check-equal? (first-tag-value x 'Message) "Request has expired"))
+              [x (call/input-request/retry "GET" uri '() read-entity/xexpr)])
+         (check-equal? (se-path* '(Message) x) "Request has expired"))
 
        ;; ACL
        (define acl (get-acl b+p))

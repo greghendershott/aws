@@ -1,10 +1,11 @@
-#lang racket/base
+#lang at-exp racket/base
 
 (require http/head
          http/request
          net/base64
          racket/contract/base
          racket/dict
+         racket/format
          racket/match
          racket/math
          xml/xexpr
@@ -17,24 +18,21 @@
    . ->* .
    xexpr?)
   (define data (string->bytes/utf-8 (dict->form-urlencoded xs-post-data)))
-  (log-aws-debug (tr "POST" data))
+  (log-aws-debug @~a{POST @data})
   (call/output-request
    "1.1" "POST" uri data #f heads
    (lambda (in h)
      (define e (read-entity/xexpr in h))
      (match (extract-http-code h)
        [200 e]
-       [503
-        (if (<= try 5)
-            (let ([sleep-time (sqr try)])   ;wait longer each time
-              (log-aws-info (format "AWS returned 503. Try ~a in ~a secs."
-                                    (add1 try) sleep-time))
-              (sleep sleep-time)
-              (post-with-retry uri xs-post-data heads (add1 try)))
-            (error 'post-with-retry "too many 503 retries; giving up"))]
-       [_
-        (raise (header&response->exn:fail:aws
-                h e (current-continuation-marks)))]))))
+       [503 #:when (<= try 5)
+            (define sleep-time (sqr try))
+            (log-aws-warning
+             @~a{AWS returned 503. Attempt @(add1 try) in @sleep-time seconds.})
+            (sleep sleep-time)
+            (post-with-retry uri xs-post-data heads (add1 try))]
+       [_ (raise (header&response->exn:fail:aws
+                  h e (current-continuation-marks)))]))))
 
 (define/provide (set-next-token params token)
   (cons (list 'NextToken token)

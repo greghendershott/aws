@@ -149,11 +149,11 @@ Used by @racket[header&response->exn:fail:aws] and @racket[check-response].
 
 @defproc[(header&response->exn:fail:aws
 [headers string?]
-[entity (or/c bytes? xexpr?)]
+[body (or/c bytes? xexpr?)]
 [ccm continuation-mark-set?])
 exn:fail:aws?]{
 
-Given an HTTP response's @racket[headers] and @racket[entity], return a
+Given an HTTP response's @racket[headers] and @racket[body], return a
 @racket[exn:fail:aws] constructed with information from the response.
 
 }
@@ -166,7 +166,7 @@ Given an HTTP response's @racket[headers] and @racket[entity], return a
 
 Check @racket[headers]. If the status code is one of 200, 201, 202, 204, 206,
 301, 302, or 307, simply return @racket[headers] (without reading any response
-entity from @racket[in]).
+body from @racket[in]).
 
 Otherwise, read the XML response body from @racket[in] and use the information
 to construct and raise @racket[exn:fail:aws].
@@ -226,11 +226,11 @@ create the authentication header correctly and successfully.
 
 Plus, @racket[aws/s3] does provide wrappers and tries to help with
 some wrinkles. For example, S3 may give you a 302 redirect when you do
-a @tt{PUT} or @tt{POST}. You don't want to transmit the entire entity,
+a @tt{PUT} or @tt{POST}. You don't want to transmit the entire body,
 only to have S3 ignore it and you have to transmit it all over
 again. Instead, you want to supply the request header @tt{Expect:
 100-continue}, which lets S3 respond @italic{before} you transmit the
-entity.
+body.
 
 @subsection{Request Method}
 
@@ -262,12 +262,29 @@ The region used for the S3 REST API. Should be a value from
 @hyperlink["http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region"
 "the Region column"] of the same row as the value for @racket[s3-host].
 
+@history[#:added "1.1"]
+
 }
 
 
 @defparam[s3-scheme v (or/c "http" "https") #:value "http"]{
 
 The scheme used for the S3 REST API.
+
+}
+
+
+@defparam[s3-max-tries v exact-positive-integer? #:value 5]{
+
+The number of attempts made for each HTTP request to S3.
+
+When S3 returns certain 50x response codes, an additional
+@racket[(sub1 (s3-max-tries))] attempts will be made. If none succeed, then a
+@racket[exn:fail:aws] exception is raised.
+
+A value of @racket[1] means try just once, in other words do not retry.
+
+@history[#:added "1.7"]
 
 }
 
@@ -383,6 +400,27 @@ List all the buckets belonging to your AWS account.
 }
 
 
+@defproc[(bucket-location
+[bucket string?]
+[default string? "us-east-1"]
+) string?]{
+
+Return @racket[bucket]'s @tt{LocationConstraint} value, if any, else
+@racket[default].
+
+When dealing with arbitrary buckets, you might need to @racket[parameterize]
+@racket[s3-region] to this value because AWS Signature v4 requires a region to
+be specified. For example:
+
+@racketblock[
+(parameterize ([s3-region (bucket-location "my-bucket")])
+  (ls "my-bucket/"))
+]
+
+@history[#:added "1.6"]
+}
+
+
 @defproc[(ls/proc
 [bucket+path string?]
 [proc (any/c (listof xexpr?) . -> . any/c)]
@@ -391,9 +429,9 @@ List all the buckets belonging to your AWS account.
 [#:delimiter delimiter (or/c #f string?) #f]
 ) any/c]{
 
-List objects whose names start with the pathname @racket[bucket+path] (which
-is the form @racket["bucket/path/to/resource"]). S3 is queried to return
-results for at most @racket[max-each] objects at a time.
+List objects whose names start with the @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]). S3 is queried to return results for
+at most @racket[max-each] objects at a time.
 
 For each such batch, @racket[proc] is called. The first time @racket[proc] is
 called, its first argument is the @racket[init] value; subsequent times it's
@@ -412,8 +450,8 @@ The return value of @racket[ls/proc] is the final return value of
 For example, @racket[ls] is implemented as simply:
 
 @racketblock[
-(map (lambda (x) (first-tag-value x 'Key))
-     (ls/proc b+p append '()))
+  (map (λ (x) (se-path* '(Key) x))
+       (ls/proc b+p append '()))
 ]
 
 }
@@ -423,8 +461,9 @@ For example, @racket[ls] is implemented as simply:
 [bucket+path string?]
 ) (listof string?)]{
 
-List the names of objects whose names start with the pathname
-@racket[bucket+path] (which is the form @racket["bucket/path/to/resource"]).
+List the names of objects whose names start with @racket[bucket+path] (which
+is the form @racket["bucket/path/to/resource"]).
+
 }
 
 
@@ -432,9 +471,9 @@ List the names of objects whose names start with the pathname
 [bucket+path string?]
 ) (listof (list/c xexpr? string? xexpr?))]{
 
-List objects whose names start with the path in @racket[bucket+path] (which is
-the form @racket["bucket/path/to/resource"]). Return a list, each item of
-which is a list consisting of:
+List objects whose names start with @racket[bucket+path] (which is the form
+@racket["bucket/path/to/resource"]). Return a list, each item of which is a
+list consisting of:
 
 @itemize[
 @item{ an @racket[xexpr] (as with @racket[ls/proc]) }
@@ -500,6 +539,7 @@ list must have no more than 1000 elements.
 @defproc[(copy
 [bucket+path/from string?]
 [bucket+path/to string?]
+[heads dict? '()]
 ) string?]{
 
 @margin-note{Tip: To rename an object, @racket[copy] it then @racket[delete]
@@ -510,7 +550,10 @@ including its metadata. Both names are of the form
 @racket["bucket/path/to/resource"].
 
 It is not an error to copy to an existing object (it will be replaced). It is
-even OK to copy an existing object to itself.
+even OK to copy an existing object to itself, as long as @racket[heads] implies
+metadata changes.
+
+@history[#:changed "1.8" @elem{Added the @racket[heads] argument.}]
 
 }
 
@@ -533,12 +576,19 @@ S3 responds with an XML representation of the ACL, which is returned as an
 
 @defproc[(put-acl
 [bucket+path string?]
-[acl xexpr?]
+[acl (or/c xexpr? #f)]
+[heads dict? '()]
 ) void]{
 
 Make a @tt{PUT} request to set the
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
 "ACL"] of the object  @racket[bucket+path] to @racket[acl].
+
+If @racket[acl] is @racket[#f], then the request body is empty and ACL
+changes must be provided by @racket[heads] (e.g., as a canned ACL
+using @racket['x-amz-acl]).
+
+@history[#:changed "1.8" @elem{Added the @racket[heads] argument and allow @racket[#f] for @racket[acl].}]
 
 }
 
@@ -560,7 +610,7 @@ Make a @tt{GET} request for @racket[bucket+path] (which is the form
 
 The @racket[reader] procedure is called with an @racket[input-port?] and a
 @racket[string?] respresenting the response headers. The @racket[reader] should
-read the response entity from the port, being careful to read the exact number
+read the response body from the port, being careful to read the exact number
 of bytes as specified in the response header's @tt{Content-Length} field. The
 return value of @racket[reader] is the return value of @racket[get/proc].
 
@@ -585,20 +635,20 @@ the value for the header.)
 ) bytes?]{
 
 Make a @tt{GET} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and return the response entity as
+@racket["bucket/path/to/resource"]) and return the response body as
 @racket[bytes?].
 
 You may pass request headers in the optional @racket[heads] argument.
 
 The optional arguments @racket[range-begin] and @racket[range-end] are used to
 supply an optional @tt{Range} request header. This header, which Amazon S3
-supports, enables a getting only a subset of the bytes.  Note that
+supports, enables a getting only a subset of the bytes. Note that
 @racket[range-end] is @italic{ex}clusive to be consistent with the Racket
 convention, e.g. @racket[subbytes]. (The HTTP @tt{Range} header specifies the
 end as @italic{in}clusive, so your @racket[range-end] argument is decremented
 to make the value for the header.)
 
-The response entity is held in memory; if it is very large and you want to
+The response body is held in memory; if it is very large and you want to
 "stream" it instead, consider using @racket[get/proc].
 
 }
@@ -606,17 +656,16 @@ The response entity is held in memory; if it is very large and you want to
 
 @defproc[(get/file
 [bucket+path string?]
-[pathname path-string?]
+[file path-string?]
 [heads dict? '()]
 [#:mode mode-flag (or/c 'binary 'text) 'binary]
 [#:exists exists-flag (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace) 'error]
 ) void?]{
 
 Make a @tt{GET} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and copy the the response entity directly to
-the file specified by @racket[pathname]. The keyword arguments @racket[#:mode]
-and @racket[#:exists] are identical to those for
-@racket[call-with-output-file*].
+@racket["bucket/path/to/resource"]) and copy the the response body directly to
+@racket[file]. The keyword arguments @racket[#:mode] and @racket[#:exists] are
+identical to those for @racket[call-with-output-file*].
 
 You may pass request headers in the optional @racket[heads] argument.
 
@@ -647,20 +696,20 @@ To upload more than about 100 MB, prefer @racket[multipart-put].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]), using the @racket[writer] procedure to
-write the request entity and the @racket[reader] procedure to read the
-response entity.  Returns the response header (unless it raises
+write the request body and the @racket[reader] procedure to read the
+response body.  Returns the response header (unless it raises
 @racket[exn:fail:aws]).
 
 The @racket[writer] procedure is given an @racket[output-port?] and a
 @racket[string?] representing the response headers. It should write the
-request entity to the port. The amount written should be exactly the same as
+request body to the port. The amount written should be exactly the same as
 @racket[data-length], which is used to create a @tt{Content-Length} request
 header. You must also supply @racket[mime-type] (for example
 @racket["text/plain"]) which is used to create a @tt{Content-Type} request
 header.
 
 The @racket[reader] procedure is the same as for @racket[get/proc]. The
-response entity for a @tt{PUT} request usually isn't interesting, but you
+response body for a @tt{PUT} request usually isn't interesting, but you
 should read it anyway.
 
 Note: If you want a @tt{Content-MD5} request header, you must calculate and
@@ -688,7 +737,7 @@ To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 @margin-note{To upload more than about 100 MB, prefer @racket[multipart-put].}
 
 Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]), sending @racket[data] as the request entity
+@racket["bucket/path/to/resource"]), sending @racket[data] as the request body
 and creating a @tt{Content-Type} header from @racket[mime-type]. Returns the
 response header (unless it raises @racket[exn:fail:aws]).
 
@@ -704,7 +753,7 @@ To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 
 @defproc[(put/file
 [bucket+path string?]
-[pathname path-string?]
+[file path-string?]
 [#:mime-type mime-type (or/c #f string?) #f]
 [#:mode mode-flag (or/c 'binary 'text) 'binary]
 ) void?]{
@@ -712,13 +761,11 @@ To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 @margin-note{For files larger than about 100 MB, prefer
 @racket[multipart-put/file].}
 
-Upload the file @racket[pathname] to @racket[bucket+path].
+Upload @racket[file] to @racket[bucket+path] and return the response
+header (or raise @racket[exn:fail:aws]).
 
-Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and copy the the request entity directly
-from the file specified by @racket[pathname].  The @racket[#:mode-flag]
-argument is identical to that for @racket[call-with-input-file*], which is
-used.  Returns the response header (unless it raises @racket[exn:fail:aws]).
+The @racket[#:mode-flag] argument is identical to that of
+@racket[call-with-input-file*].
 
 If @racket[#:mime-type] is @racket[#f], then the @tt{Content-Type} header is
 guessed from the file extension, using a (very short!) list of common
@@ -727,16 +774,16 @@ extensions. If no match is found, then
 MIME type guessing by setting the @racket[path->mime-proc] parameter to your
 own procedure.
 
-A @tt{Content-MD5} request header is automatically created from the contents of
-the file represented by @racket[path]. To ensure data integrity, S3 will reject
+A @tt{Content-MD5} request header is automatically created from the
+contents of @racket[file]. To ensure data integrity, S3 will reject
 the request if the bytes it receives do not match the MD5 checksum.
 
 A @tt{Content-Disposition} request header is automatically created from
-@racket[pathname]. For example if @racket[pathname] is
-@racket["/foo/bar/test.txt"] or @racket["c:\\foo\\bar\\test.txt"] then the
-header @racket["Content-Disposition:attachment; filename=\"test.txt\""] is
-created.  This is helpful because a web browser that is given the URI for the
-object will prompt the user to download it as a file.
+@racket[file]. For example if @racket[file] is @racket["/foo/bar/test.txt"] or
+@racket["c:\\foo\\bar\\test.txt"] then the header
+@racket["Content-Disposition:attachment; filename=\"test.txt\""] is created.
+This is helpful because a web browser that is given the URI for the object
+will prompt the user to download it as a file.
 
 To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -782,13 +829,17 @@ the last part.
 The parts are uploaded using a small number of worker threads, to get some
 parallelism and probably better performance.
 
+@history[#:changed "1.7" "Worker threads handle exceptions by returning work
+to the end of the to-do list to retry later, but no sooner than a delay that
+increases after each such retry."]
+
 }
 
 
 @deftogether[(
   @defproc[(multipart-put/file
   [bucket+path string?]
-  [path path?]
+  [file path?]
   [#:mime-type mime-type string? #f]
   [#:mode mode-flag (or/c 'binary 'text) 'binary]
   [#:part-size part-size (or/c #f s3-multipart-size/c)]
@@ -809,7 +860,57 @@ Although it's usually desirable for @racket[part-size] to be as small
 as possible, it must be at least 5 MB, and large enough that no more
 than 10,000 parts are required. When @racket[part-size] is
 @racket[#f], the default, a suitable minimal size is calculated based
-on the @racket[file-size] of @racket[path].
+on the @racket[file-size] of @racket[file].
+
+}
+
+
+@defproc[(incomplete-multipart-put/file
+[bucket+path string?]
+[file path?]
+[#:mode mode 'binary]
+[#:part-size part-size #f]
+) (or/c #f
+        (cons/c string?
+                (listof (cons/c s3-multipart-number/c string?))))]{
+
+@margin-note{@bold{EXPERIMENTAL}. Use at your own risk. Subject to
+change or removal.}
+
+Use @racket[list-multipart-uploads] to look for a @racket[multipart-put/file]
+of @racket[bucket+path] and @racket[file] that was interrupted (neither
+@racket[complete-multipart-upload] nor @racket[abort-multipart-upload] was
+called and succeeded). If such an upload is found, use
+@racket[list-multipart-upload-parts] to determine which of the previously
+uploaded parts have MD5 checksums that match the corresponding parts of
+@racket[file] (that is, parts that do not remain to be uploaded). If any do,
+return the upload ID and a list of those parts. Otherwise return @racket[#f].
+
+You may call this to determine whether @racket[resume-multipart-put/file]
+would attempt to do anything, for example if you want to get user
+confirmation.
+
+@history[#:added "1.5"]
+
+}
+
+
+@defproc[(resume-multipart-put/file
+[bucket+path string?]
+[file path?]
+[#:mode mode 'binary]
+[#:part-size part-size #f]
+) (or/c #f string?)]{
+
+@margin-note{@bold{EXPERIMENTAL}. Use at your own risk. Subject to
+change or removal.}
+
+If @racket[incomplete-multipart-put/file] returns a non @racket[#f] value, use
+the information to resume the upload by @racket[upload-part]-ing the remaining
+parts, calling @racket[complete-multipart-upload], and returning the upload
+ID. Otherwise return @racket[#f].
+
+@history[#:added "1.5"]
 
 }
 
@@ -877,6 +978,8 @@ Get information about multipart uploads that haven't been ended with
 Get a list of already-uploaded parts for a multipart upload that
 hasn't been ended with @racket[complete-multipart-upload] or
 @racket[abort-multipart-upload].
+
+@history[#:added "1.3"]
 
 }
 
@@ -1988,6 +2091,8 @@ those statistics to be returned by specifying them in @racket[statistics].  For
 example if @racket[statistics] includes the symbol @racket['Sum], then the
 @racket[sum] member will be non-@racket[#f], otherwise it will be @racket[#f].
 
+@history[#:added "1.4"]
+
 }
 
 @subsection{Listing metrics}
@@ -2409,38 +2514,6 @@ which encodes some extra characters compared to RFC 2396.  Doing so is
 important especially for SDB and its @tt{Select} action: The SQL-like statement
 contains characters like @racket[#\*], @racket[#\(], and @racket[#\)], which
 SDB requires to be percent-encoded.
-
-}
-
-
-@defproc[(tags
-[xexpr xexpr?]
-[tag symbol?]
-[direct-child-of (or/c #f symbol?) #f]
-) (listof xexpr?)]{
-
-Given @racket[xexpr] return a list of all the elements starting with
-@racket[tag]. If @racket[direct-child-of] is @racket[#f], it will return
-elements at any depth. It will even return nested elements multiple times --
-once on their own, and once within their parent.  If you only want elements
-that have a specific immediate parent, set @racket[direct-child-of] to that
-symbol.
-
-Although there are more sophisticated and correct ways to make sense of XML,
-this is useful when the XML structure is small and predictable, and you care
-about extracting a few specific elements.
-
-}
-
-
-@defproc[(first-tag-value
-[xexpr xexpr?]
-[tag symbol?]
-[def any/c #f]
-) string?]{
-
-Given @racket[xexpr], return the value of just the first element having tag
-@racket[tag], or if none found, @racket[def].
 
 }
 

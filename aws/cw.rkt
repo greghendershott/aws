@@ -45,14 +45,12 @@
                                                  (sha256-hex-string post-data)
                                                  (cw-region)
                                                  "monitoring"))]
-         [result (post-with-retry uri params heads)])
-    (append (result-proc result)
-            ;; If AWS returned a NextToken element in the response XML, we
-            ;; need to call again to get more values.
-            (match (tags result 'NextToken)
-              [(list `(NextToken () ,token)) (cw (set-next-token params token)
-                                                 result-proc)]
-              [_                             '()]))))
+         [x (post-with-retry uri params heads)])
+    (append (result-proc x)
+            (match (se-path* '(NextToken) x)
+              [#f '()]
+              [token (cw (set-next-token params token)
+                         result-proc)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -128,9 +126,9 @@
 ;; <Value>. Combine them into a single dimension/c.
 (define/contract (xexpr->dimensions/c x)
   (xexpr? . -> . dimensions/c)
-  (for/list ([x (in-list (tags x 'member 'Dimensions))])
-      (list (string->symbol (first-tag-value x 'Name))
-            (first-tag-value x 'Value))))
+  (for/list ([x (in-list (se-path*/elements '(Dimensions member) x))])
+      (list (string->symbol (se-path* '(Name) x))
+            (se-path* '(Value) x))))
 
 ;; 1->2: In HTTP request params each dimension/c needs to be split
 ;; into two query parameters, Name=x and Value=y.
@@ -169,11 +167,11 @@
         ,@(if metric-name `((MetricName ,metric-name)) `())
         ,@(if namespace `((Namespace ,namespace)) `())
         ,@(dimensions/c->params dimensions))
-      (λ (xpr)
+      (λ (x)
         ;; Only get 'member elements that are direct kids of 'Metrics.
-        (for/list ([x (in-list (tags (nuke-ws xpr) 'member 'Metrics))])
-            (metric (first-tag-value x 'MetricName)
-                    (first-tag-value x 'Namespace)
+        (for/list ([x (in-list (se-path*/elements '(Metrics member) (nuke-ws x)))])
+            (metric (se-path* '(MetricName) x)
+                    (se-path* '(Namespace) x)
                     (xexpr->dimensions/c x))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -192,7 +190,7 @@
          ) #:transparent)
 (provide (struct-out datum))
 
-(define/contract (put-metric-data namespace data)
+(define/contract/provide (put-metric-data namespace data)
   (string? (non-empty-listof datum?) . -> . void?)
   (cw `((Action "PutMetricData")
         (Namespace ,namespace)
@@ -242,48 +240,49 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract/provide (get-metric-statistics #:metric-name metric-name
-                                        #:namespace namespace
-                                        #:statistics statistics
-                                        #:unit unit
-                                        #:start-time start-time
-                                        #:end-time end-time
-                                        #:period [period 60]
-                                        #:dimensions [dimensions '()])
-  ((#:metric-name string?
-    #:namespace string?
-    #:statistics (non-empty-listof statistic/c)
-    #:unit unit/c
-    #:start-time exact-integer?
-    #:end-time exact-integer?)
-   (#:period period/c
-    #:dimensions dimensions/c)
-   . ->* . (listof datum?))
+                                                #:namespace namespace
+                                                #:statistics statistics
+                                                #:unit unit
+                                                #:start-time start-time
+                                                #:end-time end-time
+                                                #:period [period 60]
+                                                #:dimensions [dimensions '()])
+  (->* (#:metric-name string?
+        #:namespace string?
+        #:statistics (non-empty-listof statistic/c)
+        #:unit unit/c
+        #:start-time exact-integer?
+        #:end-time exact-integer?)
+       (#:period period/c
+        #:dimensions dimensions/c)
+       (listof datum?))
   (cw `((Action "GetMetricStatistics")
         (MetricName ,metric-name)
         (Namespace ,namespace)
         ,@(for/list ([x (in-list statistics)]
                      [n (in-naturals 1)])
-              `(,(string->symbol (format "Statistics.member.~a" n))
-                ,(symbol->string x)))
+            `(,(string->symbol (format "Statistics.member.~a" n))
+              ,(symbol->string x)))
         (Unit ,(symbol->string unit))
         (Period ,(number->string period))
         (StartTime ,(secs->str start-time))
         (EndTime ,(secs->str end-time))
         ,@(dimensions/c->params dimensions))
       (λ (xpr)
-        (for/list ([x (in-list (tags (nuke-ws xpr) 'member 'Datapoints))])
-            (define (get sym f)
-              (define v (first-tag-value x sym #f))
-              (and v (f v)))
-            (datum metric-name
-                   #f
-                   (get 'Minimum string->number)
-                   (get 'Maximum string->number)
-                   (get 'Sum string->number)
-                   (get 'SampleCount string->number)
-                   (get 'Unit string->symbol)
-                   (get 'Timestamp str->secs)
-                   (first-tag-value x 'Dimensions '()))))))
+        (for/list ([x (in-list (se-path*/elements '(Datapoints member) (nuke-ws xpr)))])
+          (define (get sym [f values])
+            (match (se-path* (list sym) x)
+              [#f #f]
+              [v (f v)]))
+          (datum metric-name
+                 #f
+                 (get 'Minimum string->number)
+                 (get 'Maximum string->number)
+                 (get 'Sum string->number)
+                 (get 'SampleCount string->number)
+                 (get 'Unit string->symbol)
+                 (get 'Timestamp str->secs)
+                 (get 'Dimensions))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -315,30 +314,34 @@
 (define (xexpr->alarms xpr)
   ;; xexpr? -> (listof metric-alarm?)
   ;; Only get 'member elements that are direct kids of 'MetricAlarms
-  (for/list ([x (in-list (tags (nuke-ws xpr) 'member 'MetricAlarms))])
-      (alarm
-       (first-tag-value x 'AlarmName)
-       (first-tag-value x 'AlarmDescription)
-       (first-tag-value x 'AlarmArn)
-       (str->secs (first-tag-value x 'AlarmConfigurationUpdatedTimestamp #f))
-       (first-tag-value x 'MetricName)
-       (first-tag-value x 'Namespace)
-       (string->number (first-tag-value x 'Threshold))
-       (first-tag-value x 'ComparisonOperator)
-       (first-tag-value x 'AlarmActions)
-       (first-tag-value x 'OKActions)
-       (first-tag-value x 'InsufficientDataActions)
-       (first-tag-value x 'StateValue)
-       (first-tag-value x 'StateReason)
-       (first-tag-value x 'StateReasonData)
-       (str->secs (first-tag-value x 'StateUpdatedTimestamp #f))
-       (string->number (first-tag-value x 'Period))
-       (string->boolean (first-tag-value x 'ActionsEnabled))
-       (string->number (first-tag-value x 'EvaluationPeriods))
-       (first-tag-value x 'Statistic)
-       (xexpr->dimensions/c x)
-       ;; (first-tag-value x 'Dimensions '())
-       )))
+  (for/list ([x (in-list (se-path*/elements '(MetricAlarms member) (nuke-ws xpr)))])
+    (define (get sym [f values])
+      (match (se-path* (list sym) x)
+        [#f #f]
+        [v (f v)]))
+    (alarm
+     (get 'AlarmName)
+     (get 'AlarmDescription)
+     (get 'AlarmArn)
+     (get 'AlarmConfigurationUpdatedTimestamp str->secs)
+     (get 'MetricName)
+     (get 'Namespace)
+     (get 'Threshold string->number)
+     (get 'ComparisonOperator)
+     (get 'AlarmActions)
+     (get 'OKActions)
+     (get 'InsufficientDataActions)
+     (get 'StateValue)
+     (get 'StateReason)
+     (get 'StateReasonData)
+     (get 'StateUpdatedTimestamp str->secs)
+     (get 'Period string->number)
+     (get 'ActionsEnabled string->boolean)
+     (get 'EvaluationPeriods string->number)
+     (get 'Statistic)
+     (xexpr->dimensions/c x)
+     ;; (first-tag-value x 'Dimensions '())
+     )))
 
 (define/contract/provide (describe-alarms
                           #:alarm-name-prefix [alarm-name-prefix #f]
@@ -408,17 +411,18 @@
         ,@(if end-date `((EndDate ,(secs->str end-date))) `())
         ,@(if history-type `((HistoryType ,(format "~a" history-type))) `()))
       (λ (x)
-        (for/list ([x (in-list (tags (nuke-ws x) 'member 'AlarmHistoryItems))])
-            (alarm-history (str->secs (first-tag-value x 'Timestamp #f))
-                           (first-tag-value x 'HistoryItemType)
-                           (first-tag-value x 'AlarmName)
-                           ;; HistoryData is a bunch of JSON. Punting
-                           ;; on parsing that and just returning
-                           ;; as-is.
-                           (match (tags x 'HistoryData)
-                             [`((HistoryData () ,xs ...)) (string-join xs "")]
-                             [_ #f])
-                           (first-tag-value x 'HistorySummary))))))
+        (for/list ([x (in-list (se-path*/elements '(AlarmHistoryItems member) (nuke-ws x)))])
+          (define (get sym [f values])
+            (match (se-path* (list sym) x)
+              [#f #f]
+              [v (f v)]))
+          (alarm-history (get 'Timestamp str->secs)
+                         (get 'HistoryItemType)
+                         (get 'AlarmName)
+                         ;; HistoryData is a bunch of JSON. Punt on
+                         ;; parsing that; just return as-is.
+                         (string-join (se-path*/list '(HistoryData) x) "")
+                         (get 'HistorySummary))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -449,15 +453,18 @@
 #;
 (describe-alarm-history)
 
-#;
-(get-metric-statistics #:metric-name "CPUUtilization"
-                       #:namespace "AWS/EC2"
+
+#|
+(get-metric-statistics #:metric-name "testmetric"
+                       #:namespace "testnamespace"
                        #:statistics '(Average Sum Minimum Maximum SampleCount)
-                       #:unit 'Percent
+                       #:unit 'Count
                        #:period (* 60 60) ;1 hour
-                       #:start-time (- (current-seconds) (* 24 60 60))
+                       #:start-time (- (current-seconds) (* 7 24 60 60))
                        #:end-time (current-seconds)
-                       #:dimensions `((InstanceId "i-cfeb8ba4")) )
+                       ;;#:dimensions `((InstanceId "i-cfeb8ba4"))
+                       )
+|#
 
 (module+ test
   (require rackunit

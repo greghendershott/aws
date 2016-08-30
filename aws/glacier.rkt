@@ -43,10 +43,9 @@
   (string? . -> . (or/c #t exn:fail:aws?))
   (define m "PUT")
   (define u (string-append "http://" (host) "/-/vaults/" name))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -56,7 +55,7 @@
                                                       (sha256-hex-string #"")
                                                       (region)
                                                       service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))
                         #t)))
@@ -65,10 +64,9 @@
   (string? . -> . (or/c #t exn:fail:aws?))
   (define m "DELETE")
   (define u (string-append "http://" (host) "/-/vaults/" name))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -77,7 +75,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))
                         #t)))
@@ -87,10 +85,9 @@
 (define (list-vaults)
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -99,7 +96,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (hash-ref (read-entity/jsexpr p h) 'VaultList))))
 
@@ -107,10 +104,9 @@
   (string? . -> . jsexpr?)
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/" name))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -119,7 +115,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
 
@@ -133,10 +129,9 @@
   (define m "PUT")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (define xs (append (if inventory? '("InventoryRetrievalCompleted") '())
                      (if archive? '("ArchiveRetrievalCompleted") '())))
   (define data (jsexpr->bytes (hasheq 'SNSTopic sns
@@ -144,14 +139,14 @@
   (call/output-request "1.1"
                        m
                        u
-                       (lambda (out) (display data out))
+                       (λ (out) (display data out))
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
                                  (aws-v4-authorization m u h
                                                        (sha256-hex-string data)
                                                        (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         #t)))
 
@@ -160,10 +155,9 @@
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -172,7 +166,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
 
@@ -181,10 +175,9 @@
   (define m "DELETE")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/notification-configuration"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -193,7 +186,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h)))))
 
@@ -204,26 +197,25 @@
   (string? string? bytes?  . -> . string?)
   (define m "POST")
   (define u (string-append "http://" (host) "/-/vaults/" name "/archives"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'Expect "100-continue"
-                  'Content-Length (bytes-length data)
-                  'x-amz-glacier-version glacier-version
-                  'x-amz-content-sha256 (bytes->hex-string (sha256 data))
-                  'x-amz-sha256-tree-hash (bytes->hex-string (tree-hash data))
-                  'x-amz-archive-description desc
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'Expect "100-continue"
+                    'Content-Length (bytes-length data)
+                    'x-amz-glacier-version glacier-version
+                    'x-amz-content-sha256 (bytes->hex-string (sha256 data))
+                    'x-amz-sha256-tree-hash (bytes->hex-string (tree-hash data))
+                    'x-amz-archive-description desc))
   (call/output-request "1.1"
                        m
                        u
-                       (lambda (out) (display data out))
+                       (λ (out) (display data out))
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
                                  (aws-v4-authorization m u h
                                                        (sha256-hex-string data)
                                                        (region) service))
-                       (lambda (p h)
+                       (λ (p h)
                          (check-response p h)
                          (void (read-entity/jsexpr p h))
                          (extract-field "x-amz-archive-id" h))))
@@ -233,10 +225,9 @@
   (define m "DELETE")
   (define u (string-append "http://" (host) "/-/vaults/" vault
                            "/archives/" archive-id))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -245,7 +236,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         #t)))
 
@@ -261,23 +252,22 @@
   (define m "POST")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  'x-amz-part-size part-size
-                  'x-amz-archive-description desc
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version
+                    'x-amz-part-size part-size
+                    'x-amz-archive-description desc))
   (call/output-request "1.1"
                        m
                        u
-                       (lambda (out) (void))
+                       (λ (out) (void))
                        0
                        (dict-set h
                                  'Authorization
                                  (aws-v4-authorization m u h
                                                        (sha256-hex-string #"")
                                                        (region) service))
-                       (lambda (p h)
+                       (λ (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
                          (extract-field "x-amz-multipart-upload-id" h))))
@@ -293,24 +283,23 @@
   (define m "PUT")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'Expect "100-continue"
-                  'x-amz-glacier-version glacier-version
-                  'x-amz-part-size part-size
-                  'Content-Length (bytes-length data)
-                  'Content-Type "application/octet-stream"
-                  'Content-Range (format "bytes ~a-~a/*"
-                                         offset
-                                         (sub1 (+ offset (bytes-length data))))
-                  'x-amz-content-sha256 (bytes->hex-string (sha256 data))
-                  'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'Expect "100-continue"
+                    'x-amz-glacier-version glacier-version
+                    'x-amz-part-size part-size
+                    'Content-Length (bytes-length data)
+                    'Content-Type "application/octet-stream"
+                    'Content-Range (format "bytes ~a-~a/*"
+                                           offset
+                                           (sub1 (+ offset (bytes-length data))))
+                    'x-amz-content-sha256 (bytes->hex-string (sha256 data))
+                    'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)))
   (let loop ((tries 12)
              (delay 1))
     (with-handlers
       ([exn?
-         (lambda(e)
+         (λ(e)
            (if (> tries 0)
              (begin
                (log-aws-warning (format "upload-part: Retrying in ~a second~a after error: ~a"
@@ -323,14 +312,14 @@
       (call/output-request "1.1"
                            m
                            u
-                           (lambda (out) (display data out))
+                           (λ (out) (display data out))
                            (bytes-length data)
                            (dict-set h
                                      'Authorization
                                      (aws-v4-authorization m u h
                                                            (sha256-hex-string data)
                                                            (region) service))
-                           (lambda (p h)
+                           (λ (p h)
                              (check-response p h)
                              (void))))))
 
@@ -348,7 +337,7 @@
         [(list args ...)
          (when
            (with-handlers
-             ([exn? (lambda(e) (channel-put exn-channel e) #f)])
+             ([exn? (λ(e) (channel-put exn-channel e) #f)])
              (begin
                (apply upload-part args)
                #t))
@@ -385,16 +374,15 @@
   (define m "POST")
   (define u (string-append "http://" (host) "/-/vaults/" name
                            "/multipart-uploads/" upload-id))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  'x-amz-archive-size total-size
-                  'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version
+                    'x-amz-archive-size total-size
+                    'x-amz-sha256-tree-hash (bytes->hex-string tree-hash)))
   (call/output-request "1.1"
                        m
                        u
-                       (lambda (out) (void))
+                       (λ (out) (void))
                        0
                        (dict-set h
                                  'Authorization
@@ -402,7 +390,7 @@
                                                        (sha256-hex-string #"")
                                                        (region)
                                                        service))
-                       (lambda (p h)
+                       (λ (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
                          (extract-field "x-amz-archive-id" h))))
@@ -450,7 +438,7 @@
   (when (> part-size (* 4 1024 1024 1024))
     (error 'create-archive-from-file "File is too large (maximum 39.06 TiB)"))
   (call-with-input-file ps
-    (lambda (port)
+    (λ (port)
       (create-archive-from-port vault port desc #:part-size part-size))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -476,22 +464,21 @@
   (define data (jsexpr->bytes (apply hasheq xs)))
   (define m "POST")
   (define u (string-append "http://" (host) "/-/vaults/" name "/jobs"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'Content-Length (bytes-length data)
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'Content-Length (bytes-length data)
+                    'x-amz-glacier-version glacier-version))
   (call/output-request "1.1"
                        m
                        u
-                       (lambda (out) (display data out))
+                       (λ (out) (display data out))
                        (bytes-length data)
                        (dict-set h
                                  'Authorization
                                  (aws-v4-authorization m u h
                                                        (sha256-hex-string data)
                                                        (region) service))
-                       (lambda (p h)
+                       (λ (p h)
                          (check-response p h)
                          (void (read-entity/bytes p h))
                          (extract-field "x-amz-job-id" h))))
@@ -500,10 +487,9 @@
 (define (list-jobs name)
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/" name "/jobs"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -512,7 +498,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (read-entity/jsexpr p h))))
 
@@ -521,10 +507,9 @@
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/" name "/jobs/" job
                            "/output"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -533,7 +518,7 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (p h)
+                      (λ (p h)
                         (check-response p h)
                         (match (extract-field "Content-Type" h)
                          ["application/json" (read-entity/jsexpr p h)]
@@ -546,10 +531,9 @@
   (define m "GET")
   (define u (string-append "http://" (host) "/-/vaults/" name "/jobs/" job
                            "/output"))
-  (define h (hash 'Host (host)
-                  'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                  'x-amz-glacier-version glacier-version
-                  ))
+  (define h (hasheq 'Host (host)
+                    'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                    'x-amz-glacier-version glacier-version))
   (call/input-request "1.1"
                       m
                       u
@@ -558,10 +542,10 @@
                                 (aws-v4-authorization m u h
                                                       (sha256-hex-string #"")
                                                       (region) service))
-                      (lambda (in h)
+                      (λ (in h)
                         (check-response in h)
                         (with-output-to-file path
-                          (lambda ()
+                          (λ ()
                             (read-entity/port in h (current-output-port)))
                           #:exists exists)
                         ;; Verify that x-amz-sha256-tree-hash matches.
@@ -572,7 +556,7 @@
 
 (define (verify-file path tree-hash)
   (with-input-from-file path
-    (lambda ()
+    (λ ()
       (equal? (bytes->hex-string
                 (hashes->tree-hash (for/list ([i (in-range 0 (file-size path) 1MB)])
                                      (sha256 (read-bytes 1MB)))))
@@ -640,8 +624,10 @@
 (module+ test
   (require rackunit
            racket/port
+           racket/runtime-path
            "sns.rkt"
            "tests/data.rkt")
+  (define-runtime-path aws.scrbl "aws.scrbl")
   (when (test-data-exists?)
     (define (go)
       (check-equal?
@@ -660,33 +646,33 @@
       (define id #f)
 
       (check-not-exn
-       (lambda () (set! id (create-archive vault "description" #"Hello, world"))))
+       (λ () (set! id (create-archive vault "description" #"Hello, world"))))
       (check-true (delete-archive vault id))
 
       (check-not-exn
-       (lambda ()
+       (λ ()
          (set! id (create-archive vault "description"
                                   (make-bytes (+ 3 (* 4 1MB)))))))
       (check-true (delete-archive vault id))
 
       (check-not-exn
-       (lambda ()
+       (λ ()
          (set! id (create-archive/multipart-upload vault "description" 1MB
                                                    (make-bytes (+ 3 (* 4 1MB)))))))
       (check-true (delete-archive vault id))
 
       (check-not-exn
-       (lambda ()
-         (set! id (create-archive-from-file vault
-                                            (build-path 'same "manual.scrbl")))))
+       (λ ()
+         (set! id (create-archive-from-file vault aws.scrbl))))
       (check-true (delete-archive vault id))
 
       (check-not-exn
-       (lambda ()
-         (call-with-input-bytes (make-bytes (* 19 1MB))
-                                (lambda (port)
-                                  (set! id (create-archive-from-port vault port "test 19MB/16MB"
-                                                                     #:part-size (* 16 1MB)))))))
+       (λ ()
+         (call-with-input-bytes
+          (make-bytes (* 19 1MB))
+          (λ (port)
+            (set! id (create-archive-from-port vault port "test 19MB/16MB"
+                                               #:part-size (* 16 1MB)))))))
 
       (check-true (delete-archive vault id))
 
@@ -700,7 +686,7 @@
       ;; (list-jobs)
 
       (check-not-exn
-       (lambda () (set-vault-notifications vault topic-arn #t #t))))
+       (λ () (set-vault-notifications vault topic-arn #t #t))))
 
     ;; Test a few regions. Note that when using SNS with Glacier, the
     ;; regions and endpoits must match, so be sure to set sns-endpoint

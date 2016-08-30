@@ -1,4 +1,4 @@
-#lang racket/base
+#lang at-exp racket/base
 
 (require (for-syntax racket/base)
          racket/contract/base
@@ -26,57 +26,57 @@
 (provide attribs/c)
 
 (define/contract/provide (create-domain domain-name)
-  (string? . -> . any)
+  (-> string? any)
   (void (sdb `((Action "CreateDomain")
                (DomainName ,domain-name)))))
 
 (define/contract/provide (delete-domain domain-name)
-  (string? . -> . any)
+  (-> string? any)
   (void (sdb `((Action "DeleteDomain")
                (DomainName ,domain-name)))))
 
 (define/contract/provide (list-domains [max 100])
-  (()
-   ((and/c integer? (between/c 1 100)))
-   . ->* . attribs/c)
+  (->* ()
+       ((and/c integer? (between/c 1 100)))
+       attribs/c)
   (sdb `((Action "ListDomains"))
        (λ (x)
          (map (λ (i) (list (first i) (third i)))
-              (tags x 'DomainName)))))
+              (se-path*/elements '(DomainName) x)))))
 
 (define/contract/provide (domain-metadata domain-name)
-  (string? . -> . attribs/c)
+  (-> string? attribs/c)
   (sdb `((Action "DomainMetadata")
          (DomainName ,domain-name))
        (λ (x)
          ;; Response includes:
          ;;   ((DomainMetadataResult () (k0 () v0) (k1 () v1) ... ))
-         (match (cddar (tags x 'DomainMetadataResult))
+         (match (cddar (se-path*/elements '(DomainMetadataResult) x))
            [(list (list k a v) ...)
             (apply map list (list k v))]))))
 
 (define/contract/provide (put-attributes domain-name item-name attributes)
-  (string? string? attribs/c . -> . any)
+  (-> string? string? attribs/c any)
   (void (sdb `((Action "PutAttributes")
                (DomainName ,domain-name)
                (ItemName ,item-name)
                ,@(attributes->query-params attributes)))))
 
 (define/contract/provide (get-attributes domain-name item-name)
-  (string? string? . -> . attribs/c)
+  (-> string? string? attribs/c)
   (sdb `((Action "GetAttributes")
          (DomainName ,domain-name)
          (ItemName ,item-name))))
 
 (define/contract/provide (delete-attributes domain-name item-name attributes)
-  (string? string? attribs/c . -> . any)
+  (-> string? string? attribs/c any)
   (void (sdb `((Action "DeleteAttributes")
                (DomainName ,domain-name)
                (ItemName ,item-name)
                ,@(attributes->query-params attributes)))))
 
 (define/contract/provide (delete-item domain-name item-name)
-  (string? string? . -> . any)
+  (-> string? string? any)
   ;; SDB doesn't provide a delete-item per se. Instead, for a given
   ;; item-name, get all of its attributes, then delete all of them.
   (delete-attributes domain-name
@@ -85,23 +85,23 @@
                                      item-name)))
 
 (define/contract/provide (select expr)
-  (string? . -> . (listof attribs/c))
+  (-> string? (listof attribs/c))
   (sdb `((Action "Select")
          (SelectExpression ,expr))
        (λ (x)
-         (for/list ([i (in-list (tags x 'Item))])
+         (for/list ([i (in-list (se-path*/elements '(Item) x))])
              (cons (list 'ItemName (third (third i)))
                    (map attribute-xexpr->attrib-pair
-                        (tags i 'Attribute)))))))
+                        (se-path*/elements '(Attribute) i)))))))
 
 (define/contract/provide (batch-put-attributes domain-name xs)
-  (string? (listof (cons/c string? attribs/c)) . -> . any)
+  (-> string? (listof (cons/c string? attribs/c)) any)
   (void (sdb `((Action "BatchPutAttributes")
                (DomainName ,domain-name)
                ,@(batch-attributes->query-params xs)))))
 
 (define/contract/provide (batch-delete-attributes domain-name xs)
-  (string? (listof (cons/c string? attribs/c)) . -> . any)
+  (-> string? (listof (cons/c string? attribs/c)) any)
   (void (sdb `((Action "BatchDeleteAttributes")
                (DomainName ,domain-name)
                ,@(batch-attributes->query-params xs)))))
@@ -113,7 +113,7 @@
 ;; attribute: Attribute.N.Name and Attribute.N.Value. And optionally
 ;; an Attribute.N.Replace parameter.
 (define/contract (attributes->query-params al)
-  (attribs/c . -> . any #| attribs/c |#)
+  (-> attribs/c any #| attribs/c |#)
   (for/fold ([xs '()])
             ([s (in-list al)]
              [n (in-naturals 1)])
@@ -133,7 +133,7 @@
                 '()))))
 
 (define/contract (batch-attributes->query-params bal)
-  ((listof (cons/c string? attribs/c)) . -> . attribs/c)
+  (-> (listof (cons/c string? attribs/c)) attribs/c)
   (for/fold ([xs '()])
             ([item (in-list bal)]
              [n-item (in-naturals 1)])
@@ -167,7 +167,7 @@
 ;; into an alist.
 (define (xexpr->alist x)
   (map attribute-xexpr->attrib-pair
-       (tags x 'Attribute)))
+       (se-path*/elements '(Attribute) x)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -187,7 +187,9 @@
 ;; that result-proc is *not* called in error conditions; it is only
 ;; called for 200 OK responses.
 (define/contract (sdb params [result-proc xexpr->alist])
-  ((attribs/c) ((xexpr? . -> . list?)) . ->* . list?)
+  (->* (attribs/c)
+       ((xexpr? . -> . list?))
+       list?)
   (ensure-have-keys)
   (define common-params
     `((AWSAccessKeyId ,(public-key))
@@ -213,7 +215,7 @@
   (append (result-proc x)
           ;; If SDB returned a NextToken element in the response XML, we
           ;; need to call again to get more values.
-          (match (tags x 'NextToken)
+          (match (se-path*/elements '(NextToken) x)
             [(list `(NextToken () ,token))
              (sdb (set-next-token params token)
                   result-proc)]
@@ -240,7 +242,7 @@
 (define attribs-hash/c (hash/c symbol? set? #|(set/c string?)|#))
 
 (define/contract (attribs-hash/c->attribs/c attribs-hash/c)
-  (attribs-hash/c . -> . attribs/c)
+  (-> attribs-hash/c attribs/c)
   (for/fold ([xs '()])
             ([(k v) (in-hash attribs-hash/c)])
     (append xs
@@ -251,7 +253,7 @@
                     (list k v))))))
 
 (define/contract (attribs/c->attribs-hash/c xs)
-  (attribs/c . -> . attribs-hash/c)
+  (-> attribs/c attribs-hash/c)
   (let ([h (make-hash)])
     (for ([x (in-list xs)])
         (match-let ([(list k v) x])
@@ -262,27 +264,27 @@
     h))
 
 (define/contract/provide (put-attributes-hash domain-name item-name attribs)
-  (string? string? attribs-hash/c . -> . any)
+  (-> string? string? attribs-hash/c any)
   (parameterize ([always-replace? #f])
     (put-attributes domain-name item-name (attribs-hash/c->attribs/c attribs))))
 
 (define/contract/provide (get-attributes-hash domain-name item-name)
-  (string? string? . -> . attribs-hash/c)
+  (-> string? string? attribs-hash/c)
   (attribs/c->attribs-hash/c (get-attributes domain-name item-name)))
 
 (struct item (name attribs) #:transparent)
 (provide (struct-out item))
 
 (define/contract/provide (select-hash expr)
-  (string? . -> . (listof item?))
+  (-> string? (listof item?))
   (sdb `((Action "Select")
          (SelectExpression ,expr))
        (λ (x)
-         (for/list ([i (in-list (tags x 'Item))])
+         (for/list ([i (in-list (se-path*/elements '(Item) x))])
              (item (third (third i)) ; ItemName value
                    (attribs/c->attribs-hash/c
                     (map attribute-xexpr->attrib-pair
-                         (tags i 'Attribute))))))))
+                         (se-path*/elements '(Attribute) i))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SDB stores all values as strings. How a number is represented as a
@@ -473,7 +475,7 @@
 
     (test-case
      "400 errors"
-     (define px #px"HTTP 400 \"Bad Request\". AWS Code=\"NoSuchDomain\" Message=\"The specified domain does not exist.\"")
+     (define px @pregexp{HTTP 400 "Bad Request". AWS Code="NoSuchDomain" Message="The specified domain does not exist."})
      (check-exn px (λ () (select "SELECT Count(*) FROM barf")))
      (check-exn px (λ () (select "SELECT Count(*) FROM barf")))
      (check-exn px (λ () (put-attributes "barf" "item" '((key "val")))))
