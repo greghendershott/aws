@@ -1707,7 +1707,7 @@ SQS. }
 
 
 @deftogether[(
-@defstruct[message ([body string?][md5 string?][receipt-handle string?][attributes (listof (list/c symbol? string?))])]
+@defstruct[message ([body string?][md5 string?][id string?][receipt-handle string?][attributes (listof (list/c symbol? string?))])]
 @defproc[(receive-messages [queue-uri string?][max (and/c exact-integer? (between/c 1 10))][visibility-timeout (or/c #f exact-nonnegative-integer?) #f]) (listof message?)]
 @defproc[(receive-message [queue-uri string?][visibility-timeout (or/c #f exact-nonnegative-integer?) #f]) (listof message?)]
 )]
