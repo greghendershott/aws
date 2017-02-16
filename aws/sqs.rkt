@@ -17,8 +17,16 @@
 (define sqs-region
   (make-parameter "us-east-1"))
 
+(struct message (body md5 id receipt-handle attributes) #:transparent
+  #:extra-constructor-name make-message)
+
 (provide (contract-out [sqs-endpoint (parameter/c endpoint?)]
-                       [sqs-region (parameter/c string?)]))
+                       [sqs-region (parameter/c string?)]
+                       [struct message ((body string?)
+                                        (md5 string?)
+                                        (id string?)
+                                        (receipt-handle string?)
+                                        (attributes (listof (list/c symbol? string?))))]))
 
 (define/contract/provide (sqs uri params [result-proc values])
   (->* (string?
@@ -91,8 +99,6 @@
                ,@(if delay-seconds
                      `((DelaySeconds ,(number->string delay-seconds)))
                      `())))))
-
-(struct message (body md5 id receipt-handle attributes) #:transparent)
 
 (define/contract/provide (receive-messages q-uri
                                            [max 1]
