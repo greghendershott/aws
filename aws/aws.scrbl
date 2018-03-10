@@ -1836,12 +1836,20 @@ Example:
 
 
 @; ----------------------------------------------------------------------------
-@section{Dynamo DB}
+@section{DynamoDB}
 
 @defmodule[aws/dynamo]
 
-@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "Dynamo"] is Amazon's newer "NoSQL" service.
+@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "DynamoDB"] is Amazon's newer "NoSQL" service.
 
+The intended use of this package is:
+
+@itemize[
+@item{Set the @racket[dynamo-api-version] parameter to a value such as @racket["20120810"].}
+@item{Consult the DynamoDB documentation for the JSON format each operation uses.}
+@item{Create an equivalent @racket[jsexpr?].}
+@item{Call @racket[dynamo-request] with the @racket[jsexpr?] and the operation name (such as @racket["CreateTable"]).}
+]
 
 @defparam[dynamo-endpoint v endpoint? #:value (endpoint "dynamodb.us-east-1.amazonaws.com" #f)]{
 
@@ -1857,13 +1865,56 @@ The region for the service.
 }
 
 
-@defthing[attribute-type/c (or/c "S" "N" "B")]{
+@defparam[dynamo-api-version v string? #:value "20111205"]{
 
-A contract for Dynamo attribute types (string, number, base64 binary).
+The DynamoDB API version. This defaults to an old value, for backward
+compatibility.
 
 }
 
+@defproc[(dynamo-request
+[operation string?]
+[data jsexpr?]
+) jsexpr?]{
 
+Make a request to the DynamoDB service.
+
+Consult the DynamoDB documentation for each operation. Supply the name
+of the operation as @racket[operation]. Supply the @racket[jsexpr?]
+equivalent of the documented JSON format as @racket[data].
+
+Some example operations:
+
+@itemize[
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_CreateTable.html" "CreateTable"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_PutItem.html" "PutItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_GetItem.html" "GetItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_DeleteItem.html" "DeleteItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateItem.html" "UpdateItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchGetItems.html" "BatchGetItems"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchWriteItem.html" "BatchWriteItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Query.html" "Query"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Scan.html" "Scan"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateTable.html" "UpdateTable"]}
+
+]
+
+}
+
+@subsection{Deprecated: DynamoDB API version 20111205}
+
+@deftogether[(
+@defthing[attribute-type/c (or/c "S" "N" "B")]
 @defproc[(create-table
 [name string?]
 [read-units exact-positive-integer?]
@@ -1872,40 +1923,10 @@ A contract for Dynamo attribute types (string, number, base64 binary).
 [hash-key-type attribute-type/c]
 [range-key-name string? #f]
 [range-key-type attribute-type/c #f]
-) jsexpr?]{
-
-Create a table.
-
-}
-
-
-@defproc[(delete-table [name string?]) jsexpr?]{
-
-Delete a table.
-
-}
-
-
-@defproc[(describe-table [name string?]) jsexpr?]{
-
-Describe a table.
-
-}
-
-
-@defproc[(list-tables
-[#:limit limit #f]
-[#:from from #f]
-) jsexpr?]{
-
-List at most @racket[limit] tables, starting with the table name
-@racket[from] (if continuing a listing that had previously stopped at
-@racket[limit]).
-
-}
-
-
-@deftogether[(
+) jsexpr?]
+@defproc[(delete-table [name string?]) jsexpr?]
+@defproc[(list-tables [#:limit limit #f] [#:from from #f]) jsexpr?]
+@defproc[(describe-table [name string?]) jsexpr?]
 @defproc[(put-item [js jsexpr?]) jsexpr?]
 @defproc[(get-item [js jsexpr?]) jsexpr?]
 @defproc[(delete-item [js jsexpr?]) jsexpr?]
@@ -1917,37 +1938,12 @@ List at most @racket[limit] tables, starting with the table name
 @defproc[(update-table [js jsexpr?]) jsexpr?]
 )]{
 
-The remaining functions accept JSON which you must construct yourself
-in the form of a @racket[jsexpr?]. The variation in the JSON is
-sufficient that wrapping them in some arbitrary Racket structure
-doesn't provide added value.  Instead, please see the Dynamo
-documentation for these similarly-named functions.
+These functions only work when @racket[dynamo-api-version] is set to
+@racket["20111205"].
 
-@itemize[
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_PutItem.html" "put-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_GetItem.html" "get-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_DeleteItem.html" "delete-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateItem.html" "update-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchGetItems.html" "batch-get-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchWriteItem.html" "batch-write-item"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Query.html" "query"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Scan.html" "scan"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateTable.html" "update-table"]}
-
-]
+@deprecated[#:what "function" @racket[dynamo-request]]
 
 }
-
-
 
 @; ----------------------------------------------------------------------------
 @section{CloudWatch (Monitoring)}
