@@ -158,7 +158,7 @@
   (define p (string-append "/2012-02-29" zone-id "/rrset"))
   (define u (endpoint->uri (r53-endpoint) p))
   (define bstr (string->bytes/utf-8 (xexpr->string changes)))
-  (define h (date+authorize "GET"
+  (define h (date+authorize "POST"
                             u
                             (hasheq 'Content-Type "application/xml")
                             bstr))
