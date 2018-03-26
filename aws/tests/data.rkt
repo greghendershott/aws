@@ -98,6 +98,8 @@
 ;; the entire queue will be created/deleted -- so pick an SQS queue
 ;; name you're not using in production!
 (def/prov test/queue)
+(def/prov test/xml-queue)
+(def/prov test/json-queue)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; used by cw.rkt
