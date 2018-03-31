@@ -43,6 +43,8 @@ test/topic = TestTopic
 # THE ENTIRE QUEUE WILL BE CREATED/DELETED -- SO PICK AN SQS QUEUE
 # NAME YOU'RE NOT USING IN PRODUCTION!
 test/queue = TestQueue
+test/xml-queue = TestXmlQueue
+test/json-queue = TestJsonQueue
 
 # Name of a namespace and metric with CloudWatch
 # This will get test metric data put to it, so pick names you're

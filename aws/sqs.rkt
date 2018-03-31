@@ -116,7 +116,9 @@
                '()))
        (λ (x)
          (for/list ([x (in-list (se-path*/elements '(Message) x))])
-             (message (se-path* '(Body) x)
+             (message (apply string-append
+                             (map (curry format "~a")
+                                  (se-path*/list '(Body) x)))
                       (se-path* '(MD5OfBody) x)
                       (se-path* '(MessageId) x)
                       (se-path* '(ReceiptHandle) x)
@@ -156,7 +158,10 @@
 
 (module+ test
   (require rackunit
+           xml
+           json
            "tests/data.rkt")
+
   (when (test-data-exists?)
     (test-case
      "sqs"
@@ -178,5 +183,54 @@
      (delete-message q-uri rh)
      ;; SQS will fail this if you delete a queue more than once < 60 seconds
      ;; So if you re-run this test too quickly, it may fail for that reason.
+     (delete-queue q-uri))
+
+    (test-case
+     "XML over SQS"
+     (read-keys)
+     (define q-uri (create-queue (test/xml-queue)))
+     (define xml-body (xexpr->string
+                       '(body
+                         (element "some data")
+                         (element ([attr "an-attribute"])
+                                  "more data"))))
+     (send-message q-uri xml-body)
+     (sleep 10.0)
+     (define ms (receive-messages q-uri 1))
+     (check-true (not (empty? ms)))
+     (define xml-m (first ms))
+     (check-equal? (message-body xml-m) xml-body)
+     (define rh (message-receipt-handle xml-m))
+     (change-message-visibility q-uri rh 10)
+     (delete-message q-uri (message-receipt-handle xml-m))
+     (delete-queue q-uri))
+
+    (test-case
+     "JSON over SQS"
+     (read-keys)
+     (define q-uri (create-queue (test/json-queue)))
+     (define json-body (jsexpr->string
+                        (hasheq
+                         'an-object (hasheq
+                                     'integer 22
+                                     'float 3.1415
+                                     'string "some string"
+                                     'boolean #t
+                                     'null-val (json-null))
+                         'an-array (list
+                                    12
+                                    13.3
+                                    "some other string"
+                                    #f
+                                    (json-null)))))
+     (send-message q-uri json-body)
+     (sleep 10.0)
+     (define ms (receive-messages q-uri 1))
+     (check-true (not (empty? ms)))
+     (define json-m (first ms))
+     (check-equal? (message-body json-m) json-body)
+     (define rh (message-receipt-handle json-m))
+     (change-message-visibility q-uri rh 10)
+     (delete-message q-uri (message-receipt-handle json-m))
      (delete-queue q-uri))
     (void)))
