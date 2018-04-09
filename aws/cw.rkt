@@ -31,20 +31,18 @@
    . ->* . list?)
   (ensure-have-keys)
   (let* ([uri (endpoint->uri (cw-endpoint) "/")]
-         [heads (hasheq 'Host (endpoint-host (cw-endpoint))
-                        'Date (seconds->gmt-8601-string 'basic (current-seconds))
-                        'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
          [params (sort (cons `(Version "2010-08-01") params)
                        param<?)]
          [post-data (string->bytes/utf-8 (dict->form-urlencoded params))]
-         [heads (dict-set* heads
-                           'Authorization
-                           (aws-v4-authorization "POST"
-                                                 uri
-                                                 heads
-                                                 (sha256-hex-string post-data)
-                                                 (cw-region)
-                                                 "monitoring"))]
+         [heads (hasheq 'Host (endpoint-host (cw-endpoint))
+                        'Date (seconds->gmt-8601-string 'basic (current-seconds))
+                        'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
+         [heads (add-v4-auth-heads #:heads   heads
+                                   #:method  "POST"
+                                   #:uri     uri
+                                   #:sha256  (sha256-hex-string post-data)
+                                   #:region  (cw-region)
+                                   #:service "monitoring")]
          [x (post-with-retry uri params heads)])
     (append (result-proc x)
             (match (se-path* '(NextToken) x)

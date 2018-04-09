@@ -128,19 +128,16 @@
 (define/contract (add-auth-heads* uri method heads body-hash)
   (-> string? string? dict? string? dict?)
   (ensure-have-keys)
-  (let* ([heads (maybe-dict-set* heads
-                                 'Host (uri->host+port uri)
-                                 'Date (seconds->gmt-8601-string 'basic)
-                                 'x-amz-content-sha256 body-hash)]
-         [heads (dict-set heads
-                          'Authorization
-                          (aws-v4-authorization method
-                                                uri
-                                                heads
-                                                body-hash
-                                                (s3-region)
-                                                "s3"))])
-    heads))
+  (let ([heads (maybe-dict-set* heads
+                                'Host (uri->host+port uri)
+                                'Date (seconds->gmt-8601-string 'basic)
+                                'x-amz-content-sha256 body-hash)])
+    (add-v4-auth-heads #:heads   heads
+                       #:method  method
+                       #:uri     uri
+                       #:sha256  body-hash
+                       #:region  (s3-region)
+                       #:service "s3")))
 
 (define/contract (add-auth-heads uri method [heads '()] [body #""])
   (->* (string? string?) (dict? bytes?) dict?)

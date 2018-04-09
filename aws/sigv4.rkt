@@ -14,6 +14,7 @@
          "util.rkt")
 
 (provide aws-v4-authorization
+         add-v4-auth-heads
          aws-v4-signed-uri
          expires/c
          sha256-hex-string
@@ -29,7 +30,7 @@
                                     uri
                                     heads
                                     sha256-hex-str)
-  (string? string? dict? string? . -> . string?)
+  (-> string? string? dict? string? string?)
   (string-join
    (list method
          (canonical-path uri)
@@ -67,9 +68,6 @@
                      string<=?)
                ";"))
 
-(define (trim s)
-  (string-trim s))
-
 (define (number->hex-string number)
   (define (hex n) (string-ref "0123456789ABCDEF" n))
   (string #\% (hex (quotient number 16)) (hex (modulo number 16))))
@@ -106,7 +104,7 @@
    "\n"))
 
 (define/contract (credential-scope 8601-date region service)
-  (string? string? string? . -> . string?)
+  (-> string? string? string? string?)
   (string-join
    (list (8601-date-only 8601-date)
          region
@@ -115,14 +113,14 @@
    "/"))
 
 (define/contract (8601-date-only s)
-  (string? . -> . string?)
+  (-> string? string?)
   (match s
     [(pregexp "^(\\d{8})" (list _ d)) d]
     [_ (error '8601-date-only "expected an 8601 date or datetime")]))
 
 ;; Value for Authorization header
 (define/contract (authorization string-to-sign heads 8601-date region service)
-  (string? dict? string? string? string? . -> . string?)
+  (-> string? dict? string? string? string? string?)
   (ensure-have-keys)
   (string-append
    "AWS4-HMAC-SHA256 "
@@ -136,13 +134,13 @@
    "Signature=" (signature string-to-sign 8601-date region service)))
 
 (define/contract (signature string-to-sign 8601-date region service)
-  (string? string? string? string? . -> . string?)
+  (-> string? string? string? string? string?)
   (bytes->hex-string
    (hmac-sha256 (derived-signing-key 8601-date region service)
                 (string->bytes/utf-8 string-to-sign))))
 
 (define/contract (derived-signing-key 8601-date region service)
-  (string? string? string? . -> . bytes?)
+  (-> string? string? string? bytes?)
   (ensure-have-keys)
   (define k-date (hmac-sha256 (bytes-append #"AWS4"
                                             (string->bytes/utf-8 (private-key)))
@@ -153,7 +151,7 @@
   k-signing)
 
 (define/contract (aws-v4-authorization method uri heads sha256-hex-str region service)
-  (string? string? dict? string? string? string? . -> . string?)
+  (-> string? string? dict? string? string? string? string?)
   (define date
     (match (dict-ref heads 'Date)
       [(pregexp "^(\\d{8}T\\d{6}Z)" (list _ d)) d]
@@ -163,13 +161,43 @@
                                  (canonical-request method uri heads sha256-hex-str))
                  heads date region service))
 
-;; (aws-v4-authorization 'get
-;;                       "/"
-;;                       (hash 'Date "20120821T230000Z"
-;;                             'Host "host")
-;;                       ""
-;;                       "us-east-1"
-;;                       "s3")
+#;
+(aws-v4-authorization "get"
+                      "/"
+                      (hash 'Date "20120821T230000Z"
+                            'Host "host")
+                      ""
+                      "us-east-1"
+                      "s3")
+
+;; A wrapper for aws-v4-authorization that is "update headers"
+;; oriented. Not only does it add the full Authorization header. It
+;; handles the case of obtaining credentials from EC2 instance
+;; meta-data -- ensuring they are refreshed and adding the required
+;; token header.
+(define/contract (add-v4-auth-heads #:heads   heads
+                                    #:method  method
+                                    #:uri     uri
+                                    #:sha256  sha256
+                                    #:region  region
+                                    #:service service)
+  (-> #:heads   dict?
+      #:method  string?
+      #:uri     string?
+      #:sha256  string?
+      #:region  string?
+      #:service string?
+      dict?)
+  (let ([heads (ensure-ec2-instance-credentials-and-add-token-header heads)])
+    (dict-set heads
+              'Authorization
+              (aws-v4-authorization method
+                                    uri
+                                    heads
+                                    sha256
+                                    region
+                                    service))))
+
 
 (module+ test
   (require rackunit
@@ -283,7 +311,7 @@
                          (between/c 1 604800)))
 
 (define/contract (aws-v4-signed-uri method uri region service expires [8601-date #f])
-  ((string? string? string? string? expires/c) (string?) . ->* . string?)
+  (->* (string? string? string? string? expires/c) (string?) string?)
   (define-values (scheme host port path query fragment) (split-uri uri))
   (define date (or 8601-date (seconds->gmt-8601-string 'basic)))
   (define qps (hasheq 'X-Amz-Algorithm "AWS4-HMAC-SHA256"

@@ -1,23 +1,30 @@
 #lang racket/base
 
-(require net/base64
-         racket/contract/base
-         racket/contract/region
+(require (only-in http
+                  gmt-8601-string->seconds)
+         json
+         net/base64
+         net/url
+         racket/contract
+         racket/dict
          racket/file
+         racket/format
          racket/match
          sha
          "util.rkt")
 
-;; These parameters hold the AWS keys. Set them before using functions
-;; in this module, for example by caling `read-aws-keys'.
+(provide public-key
+         private-key
+         read-keys
+         ensure-have-keys
+         sha256-encode
+         use-iam-ec2-credentials!
+         ensure-ec2-instance-credentials-and-add-token-header)
+
 (define public-key (make-parameter ""))
 (define private-key (make-parameter ""))
-(provide public-key
-         private-key)
 
-(define/provide (read-keys [file
-                            (build-path (find-system-path 'home-dir)
-                                        ".aws-keys")])
+(define (read-keys [file (build-path (find-system-path 'home-dir) ".aws-keys")])
   (match (file->lines file #:mode 'text #:line-mode 'any)
     ;; same format that Amazon uses for their CL tools:
     [(list (regexp #rx"^(?i:AWSAccessKeyId)=(.*)$" (list _ public))
@@ -37,7 +44,7 @@
                   "AWSAccessKeyId=<key>\n"
                   "AWSSecretKey=<key>\n"))]))
 
-(define/provide (ensure-have-keys)
+(define (ensure-have-keys)
   (define (keys-blank?)
     (or (string=? "" (public-key))
         (string=? "" (private-key))))
@@ -51,18 +58,52 @@
                           "Tip: `(read-keys)' will read them "
                           "from a ~~/.aws-keys file."))))
 
-(define/contract (shaX-encode str f)
-  (string? (bytes? bytes? . -> . bytes?) . -> . string?)
+(define/contract (sha256-encode str)
+  (-> string? string?)
   (match (bytes->string/utf-8
-          (base64-encode (f (string->bytes/utf-8 (private-key))
-                            (string->bytes/utf-8 str))))
+          (base64-encode (sha256-encode (string->bytes/utf-8 (private-key))
+                                        (string->bytes/utf-8 str))))
     [(regexp #rx"^(.*)\r\n$" (list _ x)) x] ;kill \r\n added by base64-encode
     [s s]))
 
-(define/contract/provide (sha1-encode str)
-  (string? . -> . string?)
-  (shaX-encode str hmac-sha1))
 
-(define/contract/provide (sha256-encode str)
-  (string? . -> . string?)
-  (shaX-encode str hmac-sha256))
+;;; Optional: Get credentials from EC2 instance meta-data
+
+(struct creds (public private token expires))
+
+;; Note: These aren't parameters because parameters are per-thread --
+;; whereas we'll need to update values from one thread for all
+;; threads.
+(define/contract iam-role (or/c #f string?) #f)
+(define/contract the-creds (or/c #f creds?) #f)
+
+(define (use-iam-ec2-credentials! v)
+  (set! iam-role v))
+
+(define (ensure-ec2-instance-credentials-and-add-token-header d)
+  (let ([sema (make-semaphore 1)])
+    (λ (d)
+      (cond [iam-role
+             (call-with-semaphore
+              sema
+              (λ ()
+                (unless (and the-creds
+                             (< (+ (current-seconds) (* 5 60))
+                                (creds-expires the-creds)))
+                  (set! the-creds (get-creds)))
+                (public-key (creds-public the-creds))
+                (private-key (creds-private the-creds))
+                (dict-set d 'X-Amz-Security-Token (creds-token the-creds))))]
+            [else d]))))
+
+(define (get-creds)
+  (define url
+    (string->url
+     (~a "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+         iam-role)))
+  (match (call/input-url url get-pure-port read-json)
+    [(hash-table ['AccessKeyId     public]
+                 ['SecretAccessKey private]
+                 ['Token           token]
+                 ['Expiration      expiration])
+     (creds public private token (gmt-8601-string->seconds expiration))]))

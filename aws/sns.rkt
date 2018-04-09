@@ -33,14 +33,12 @@
          [heads (hasheq 'Host (endpoint-host (sns-endpoint))
                         'Date (seconds->gmt-8601-string 'basic (current-seconds))
                         'Content-Type "application/xml")]
-         [heads (dict-set* heads
-                           'Authorization
-                           (aws-v4-authorization "GET"
-                                                 uri
-                                                 heads
-                                                 (sha256-hex-string #"")
-                                                 (sns-region)
-                                                 "sns"))]
+         [heads (add-v4-auth-heads #:heads   heads
+                                   #:method  "GET"
+                                   #:uri     uri
+                                   #:sha256  (sha256-hex-string #"")
+                                   #:region  (sns-region)
+                                   #:service "sns")]
          [result (call/input-request
                   "1.1" "GET" uri heads
                   (λ (in h)

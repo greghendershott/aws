@@ -33,15 +33,12 @@
          [heads (hasheq 'Host (endpoint-host (ses-endpoint))
                         'Date date
                         'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
-         [heads (dict-set* heads
-                           "Authorization"
-                           (aws-v4-authorization
-                            "POST"
-                            uri
-                            heads
-                            (sha256-hex-string body)
-                            (ses-region)
-                            "ses"))])
+         [heads (add-v4-auth-heads #:heads   heads
+                                   #:method  "POST"
+                                   #:uri     uri
+                                   #:sha256  (sha256-hex-string body)
+                                   #:region  (ses-region)
+                                   #:service "ses")])
     (call/output-request
      "1.1" "POST" uri body (bytes-length body) heads
      (λ (in h)

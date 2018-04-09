@@ -53,15 +53,12 @@
                           'Date (seconds->gmt-8601-string 'basic
                                                           (current-seconds))
                           'Content-Type "application/x-amz-json-1.0")])
-    (dict-set* heads
-               "Authorization"
-               (aws-v4-authorization
-                method
-                uri
-                heads
-                (sha256-hex-string body)
-                (dynamo-region)
-                service))))
+    (add-v4-auth-heads #:heads heads
+                       #:method method
+                       #:uri uri
+                       #:sha256 (sha256-hex-string body)
+                       #:region (dynamo-region)
+                       #:service service)))
 
 ;; All of the Dynamo functions POST JSON to /. The only variation is
 ;; the JSON content and the `x-amz-target` header.

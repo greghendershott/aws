@@ -49,12 +49,12 @@
   (call/input-request "1.1"
                       m
                       u
-                      (dict-set h
-                                'Authorization
-                                (aws-v4-authorization m u h
-                                                      (sha256-hex-string #"")
-                                                      (region)
-                                                      service))
+                      (add-v4-auth-heads #:heads   h
+                                         #:method  m
+                                         #:uri     u
+                                         #:sha256  (sha256-hex-string #"")
+                                         #:region  (region)
+                                         #:service service)
                       (λ (p h)
                         (check-response p h)
                         (void (read-entity/bytes p h))

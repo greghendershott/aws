@@ -127,6 +127,31 @@ calls @racket[read-keys]. If either is @italic{still} blank, calls
 @racket[error] with a hopefully helpful reminder about how to set the
 parameters. }
 
+
+@defproc[(use-iam-ec2-credentials! [iam-role-name string?]) void?]{
+
+@history[#:added "1.10"]
+
+When your code is running on an EC2 instance, instead of you supplying
+credentials in a configuration file (like @tt{~/.aws-keys}) or in
+environment variables, it is possible to obtain credentials from EC2
+instance meta-data. This simplifies configuration and is more secure.
+
+For more information how to configure this, see
+@link["https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html"
+"IAM Roles for Amazon EC2"]. Step five of those instructions ---
+``Have the application retrieve a set of temporary credentials and use
+them'' --- is done by simply calling this function once when your
+program starts.
+
+Credentials are initially obtained -- and subsequently refreshed when
+they expire -- from the EC2 instance meta-data. The
+@racket[public-key] and @racket[private-key] parameters are
+automatically set to these values. Those keys are used to sign
+requests made by this library. The @tt{X-Amz-Security-Token} header is
+supplied when making requests. }
+
+
 @; ----------------------------------------------------------------------------
 @subsection{Exception handling}
 
@@ -1541,7 +1566,7 @@ sorted in any particular order.
 }
 
 
-@defproc[(ses [params (listof (list/c symbol? string?))]) xexpr?]{
+@defproc[(request [params (listof (list/c symbol? string?))]) xexpr?]{
 
 The low-level procedure used by other procedures to make requests to SES.
 

@@ -27,15 +27,12 @@
                           'Host (endpoint-host (r53-endpoint))
                           'Date (seconds->gmt-8601-string 'basic
                                                           (current-seconds)))])
-    (dict-set* heads
-               "Authorization"
-               (aws-v4-authorization
-                method
-                uri
-                heads
-                (sha256-hex-string body)
-                "us-east-1"
-                "route53"))))
+    (add-v4-auth-heads #:heads   heads
+                       #:method  method
+                       #:uri     uri
+                       #:sha256  (sha256-hex-string body)
+                       #:region  "us-east-1"
+                       #:service "route53")))
 
 
 ;;; hosted zones

@@ -45,15 +45,12 @@
          [heads (hasheq 'Host (endpoint-host (sqs-endpoint))
                         'Date date
                         'Content-Type "application/x-www-form-urlencoded; charset=utf-8")]
-         [heads (dict-set* heads
-                           "Authorization"
-                           (aws-v4-authorization
-                            "POST"
-                            uri
-                            heads
-                            (sha256-hex-string body)
-                            (sqs-region)
-                            "sqs"))]
+         [heads (add-v4-auth-heads #:heads   heads
+                                   #:method  "POST"
+                                   #:uri     uri
+                                   #:sha256  (sha256-hex-string body)
+                                   #:region  (sqs-region)
+                                   #:service "sqs")]
          [x (post-with-retry uri params heads)])
     (append (result-proc x)
             ;; If a NextToken element in the response XML, we need to
