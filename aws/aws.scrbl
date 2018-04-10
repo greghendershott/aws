@@ -144,12 +144,50 @@ For more information how to configure this, see
 them'' --- is done by simply calling this function once when your
 program starts.
 
-Credentials are initially obtained -- and subsequently refreshed when
-they expire -- from the EC2 instance meta-data. The
+Credentials are initially obtained --- and subsequently refreshed
+before they expire --- from the EC2 instance meta-data. The
 @racket[public-key] and @racket[private-key] parameters are
 automatically set to these values. Those keys are used to sign
 requests made by this library. The @tt{X-Amz-Security-Token} header is
 supplied when making requests. }
+
+@; ----------------------------------------------------------------------------
+@subsection{Request authorization}
+
+@defmodule[aws/sigv4]
+
+@defproc[(add-v4-auth-heads
+[#:heads heads dict?]
+[#:method method string]
+[#:uri uri string?]
+[#:sha256 sha256 string?]
+[#:region region string?]
+[#:service service string?])
+dict?]{
+
+@history[#:added "1.12"]
+
+Given a @racket[dict?] of HTTP request headers, add one or more
+headers required by AWS for authorization:
+
+@itemize[
+
+@item{@tt{Authorization}: The value is calculated using
+@link["https://docs.aws.amazon.com/general/latest/gr/sigv4_signing.html"
+"AWS version 4 request signing"].}
+
+@item{@tt{X-Amz-Security-Token}: The value is the token returned along
+with temporary credentials from EC2 instance data (this applies only
+if you are using @racket[use-iam-ec2-credentials!]).}
+
+]
+
+Various functions in this library that make requests, use this
+function. As a result, you will probably not need to use it directly
+--- unless you want to sign requests for AWS functionality that is not
+wrapped by this library.
+
+}
 
 
 @; ----------------------------------------------------------------------------
