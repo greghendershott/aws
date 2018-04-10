@@ -8,6 +8,7 @@
                      aws/dynamo
                      aws/exn
                      aws/keys
+                     aws/sigv4
                      aws/s3
                      (rename-in aws/sdb [delete-item sdb-delete-item])
                      aws/ses
@@ -76,10 +77,10 @@ This library uses my @racket[http] library to make HTTP requests, instead of
 @; ----------------------------------------------------------------------------
 @subsection{Names}
 
-The names of procedures and structs do @italic{not} have special prefixes to
-``group'' them.  Instead, use the @racket[prefix-in] option for
-@racket[require] if you prefer a prefix (or need one to avoid a name
-collision).
+The names of procedures and structs generally do @italic{not} have
+special prefixes to ``group'' them. Instead, use the
+@racket[prefix-in] option for @racket[require] if you prefer a prefix
+(or need one to avoid a name collision).
 
 For example if you want the @racket[aws/sns] procedures to have an @racket[sns-]
 prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
@@ -117,7 +118,10 @@ AWSSecretKey=<key>
 }
 
 By default this file is @tt{~/.aws-keys}. You probably want to @tt{chmod} the
-permissions of this file carefully. }
+permissions of this file carefully.
+
+If your code will run on an EC2 instance, instead consider using
+@racket[use-iam-ec2-credentials!]. }
 
 
 @defproc[(ensure-have-keys) void?]{
@@ -1130,15 +1134,130 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
 }
 
 @; ----------------------------------------------------------------------------
-@section{SDB (Database)}
+@section[#:tag "DynamoDB"]{DynamoDB (Database)}
+
+@defmodule[aws/dynamo]
+
+@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "DynamoDB"] is Amazon's newer ``NoSQL'' service.
+
+The intended use of this package is:
+
+@itemize[
+@item{Set the @racket[dynamo-api-version] parameter to a value such as @racket["20120810"].}
+@item{Consult the DynamoDB documentation for the JSON format each operation uses.}
+@item{Create an equivalent @racket[jsexpr?].}
+@item{Call @racket[dynamo-request] with the @racket[jsexpr?] and the operation name (such as @racket["CreateTable"]).}
+]
+
+@defparam[dynamo-endpoint v endpoint? #:value (endpoint "dynamodb.us-east-1.amazonaws.com" #f)]{
+
+The endpoint for the service.
+
+}
+
+
+@defparam[dynamo-region v string? #:value "us-east-1"]{
+
+The region for the service.
+
+}
+
+
+@defparam[dynamo-api-version v string? #:value "20111205"]{
+
+The DynamoDB API version. This defaults to an old value, for backward
+compatibility.
+
+}
+
+@defproc[(dynamo-request
+[operation string?]
+[data jsexpr?]
+) jsexpr?]{
+
+Make a request to the DynamoDB service.
+
+Consult the DynamoDB documentation for each operation. Supply the name
+of the operation as @racket[operation]. Supply the @racket[jsexpr?]
+equivalent of the documented JSON format as @racket[data].
+
+Some example operations:
+
+@itemize[
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_CreateTable.html" "CreateTable"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_PutItem.html" "PutItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_GetItem.html" "GetItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_DeleteItem.html" "DeleteItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateItem.html" "UpdateItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchGetItems.html" "BatchGetItems"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchWriteItem.html" "BatchWriteItem"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Query.html" "Query"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Scan.html" "Scan"]}
+
+@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateTable.html" "UpdateTable"]}
+
+]
+
+}
+
+@subsection{DynamoDB old API version 20111205}
+
+@deftogether[(
+@defthing[attribute-type/c (or/c "S" "N" "B")]
+@defproc[(create-table
+[name string?]
+[read-units exact-positive-integer?]
+[write-units exact-positive-integer?]
+[hash-key-name string?]
+[hash-key-type attribute-type/c]
+[range-key-name string? #f]
+[range-key-type attribute-type/c #f]
+) jsexpr?]
+@defproc[(delete-table [name string?]) jsexpr?]
+@defproc[(list-tables [#:limit limit #f] [#:from from #f]) jsexpr?]
+@defproc[(describe-table [name string?]) jsexpr?]
+@defproc[(put-item [js jsexpr?]) jsexpr?]
+@defproc[(get-item [js jsexpr?]) jsexpr?]
+@defproc[(delete-item [js jsexpr?]) jsexpr?]
+@defproc[(update-item [js jsexpr?]) jsexpr?]
+@defproc[(batch-get-item [js jsexpr?]) jsexpr?]
+@defproc[(batch-write-item [js jsexpr?]) jsexpr?]
+@defproc[(query [js jsexpr?]) jsexpr?]
+@defproc[(scan [js jsexpr?]) jsexpr?]
+@defproc[(update-table [js jsexpr?]) jsexpr?]
+)]{
+
+These functions only work when @racket[dynamo-api-version] is set to
+@racket["20111205"].
+
+@deprecated[#:what "function" @racket[dynamo-request]]
+
+}
+
+@; ----------------------------------------------------------------------------
+@section{SimpleDB (Database)}
 
 @defmodule[aws/sdb]
 
+@bold{}
+
 @hyperlink["http://docs.amazonwebservices.com/AmazonSimpleDB/latest/DeveloperGuide/Welcome.html"
-"SimpleDB"] is a ``schema-less'' database. You should review the SDB docs to
-understand the basic concepts and names. For example an SDB @italic{domain} is
-like a SQL table, an SDB @italic{item} is like a SQL row, and an SDB
-@italic{item name} is like a SQL primary key value to unqiuely identify a row.
+"SimpleDB"] is Amazon's older ``NoSQL'' service --- for new
+applications, consider instead using @seclink["DynamoDB"]{DynamoDB}.
+
+You should review the SDB docs to understand the basic concepts and
+names. For example an SDB @italic{domain} is like a SQL table, an SDB
+@italic{item} is like a SQL row, and an SDB @italic{item name} is like
+a SQL primary key value to unqiuely identify a row.
 
 Instead of columns, each item has @italic{attributes}. Each attribute is a
 key/value hash. In other words, unlike a SQL column which has one value, each
@@ -1894,117 +2013,6 @@ Example:
                                   (ResourceRecord
                                    (Value "1.2.3.4")))))))))
 ]
-
-}
-
-
-@; ----------------------------------------------------------------------------
-@section{DynamoDB}
-
-@defmodule[aws/dynamo]
-
-@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/Introduction.html" "DynamoDB"] is Amazon's newer "NoSQL" service.
-
-The intended use of this package is:
-
-@itemize[
-@item{Set the @racket[dynamo-api-version] parameter to a value such as @racket["20120810"].}
-@item{Consult the DynamoDB documentation for the JSON format each operation uses.}
-@item{Create an equivalent @racket[jsexpr?].}
-@item{Call @racket[dynamo-request] with the @racket[jsexpr?] and the operation name (such as @racket["CreateTable"]).}
-]
-
-@defparam[dynamo-endpoint v endpoint? #:value (endpoint "dynamodb.us-east-1.amazonaws.com" #f)]{
-
-The endpoint for the service.
-
-}
-
-
-@defparam[dynamo-region v string? #:value "us-east-1"]{
-
-The region for the service.
-
-}
-
-
-@defparam[dynamo-api-version v string? #:value "20111205"]{
-
-The DynamoDB API version. This defaults to an old value, for backward
-compatibility.
-
-}
-
-@defproc[(dynamo-request
-[operation string?]
-[data jsexpr?]
-) jsexpr?]{
-
-Make a request to the DynamoDB service.
-
-Consult the DynamoDB documentation for each operation. Supply the name
-of the operation as @racket[operation]. Supply the @racket[jsexpr?]
-equivalent of the documented JSON format as @racket[data].
-
-Some example operations:
-
-@itemize[
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_CreateTable.html" "CreateTable"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_PutItem.html" "PutItem"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_GetItem.html" "GetItem"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_DeleteItem.html" "DeleteItem"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateItem.html" "UpdateItem"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchGetItems.html" "BatchGetItems"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_BatchWriteItem.html" "BatchWriteItem"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Query.html" "Query"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_Scan.html" "Scan"]}
-
-@item{@hyperlink["http://docs.amazonwebservices.com/amazondynamodb/latest/developerguide/API_UpdateTable.html" "UpdateTable"]}
-
-]
-
-}
-
-@subsection{Deprecated: DynamoDB API version 20111205}
-
-@deftogether[(
-@defthing[attribute-type/c (or/c "S" "N" "B")]
-@defproc[(create-table
-[name string?]
-[read-units exact-positive-integer?]
-[write-units exact-positive-integer?]
-[hash-key-name string?]
-[hash-key-type attribute-type/c]
-[range-key-name string? #f]
-[range-key-type attribute-type/c #f]
-) jsexpr?]
-@defproc[(delete-table [name string?]) jsexpr?]
-@defproc[(list-tables [#:limit limit #f] [#:from from #f]) jsexpr?]
-@defproc[(describe-table [name string?]) jsexpr?]
-@defproc[(put-item [js jsexpr?]) jsexpr?]
-@defproc[(get-item [js jsexpr?]) jsexpr?]
-@defproc[(delete-item [js jsexpr?]) jsexpr?]
-@defproc[(update-item [js jsexpr?]) jsexpr?]
-@defproc[(batch-get-item [js jsexpr?]) jsexpr?]
-@defproc[(batch-write-item [js jsexpr?]) jsexpr?]
-@defproc[(query [js jsexpr?]) jsexpr?]
-@defproc[(scan [js jsexpr?]) jsexpr?]
-@defproc[(update-table [js jsexpr?]) jsexpr?]
-)]{
-
-These functions only work when @racket[dynamo-api-version] is set to
-@racket["20111205"].
-
-@deprecated[#:what "function" @racket[dynamo-request]]
 
 }
 
