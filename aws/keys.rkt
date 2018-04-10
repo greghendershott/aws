@@ -76,25 +76,26 @@
 ;; threads.
 (define/contract iam-role (or/c #f string?) #f)
 (define/contract the-creds (or/c #f creds?) #f)
+(define sema (make-semaphore 1))
 
 (define (use-iam-ec2-credentials! v)
-  (set! iam-role v))
+  (set! iam-role v)
+  (ensure-ec2-instance-credentials-and-add-token-header '())
+  (void))
 
 (define (ensure-ec2-instance-credentials-and-add-token-header d)
-  (let ([sema (make-semaphore 1)])
-    (λ (d)
-      (cond [iam-role
-             (call-with-semaphore
-              sema
-              (λ ()
-                (unless (and the-creds
-                             (< (+ (current-seconds) (* 5 60))
-                                (creds-expires the-creds)))
-                  (set! the-creds (get-creds)))
-                (public-key (creds-public the-creds))
-                (private-key (creds-private the-creds))
-                (dict-set d 'X-Amz-Security-Token (creds-token the-creds))))]
-            [else d]))))
+  (cond [iam-role
+         (call-with-semaphore
+          sema
+          (λ ()
+            (unless (and the-creds
+                         (< (+ (current-seconds) (* 5 60))
+                            (creds-expires the-creds)))
+              (set! the-creds (get-creds)))
+            (public-key (creds-public the-creds))
+            (private-key (creds-private the-creds))
+            (dict-set d 'X-Amz-Security-Token (creds-token the-creds))))]
+        [else d]))
 
 (define (get-creds)
   (define url
