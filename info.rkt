@@ -1,9 +1,8 @@
-#lang setup/infotab
-(define version "1.12")
+#lang info
+(define version "1.13")
 (define collection 'multi)
-(define deps '(["racket" "6.0.1"]
-               "base"
-               ["http" "0.3"]
+(define deps '(["base" #:version "6.2"]
+               ["http" #:version "0.3"]
                "sha"
                "rackunit-lib"))
 (define build-deps '("at-exp-lib"
