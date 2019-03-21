@@ -16,6 +16,9 @@
 (provide public-key
          private-key
          read-keys
+         read-keys/aws-cli
+         aws-cli-credentials
+         aws-cli-profile
          ensure-have-keys
          sha256-encode
          use-iam-ec2-credentials!
@@ -26,37 +29,67 @@
 
 (define (read-keys [file (build-path (find-system-path 'home-dir) ".aws-keys")])
   (match (file->lines file #:mode 'text #:line-mode 'any)
-    ;; same format that Amazon uses for their CL tools:
-    [(list (regexp #rx"^(?i:AWSAccessKeyId)=(.*)$" (list _ public))
-           (regexp #rx"^(?i:AWSSecretKey)=(.*)$" (list _ private))
-           _ ...)
+    ;; old format that Amazon uses for their CL tools:
+    [(list* (regexp #rx"^(?i:AWSAccessKeyId)=(.*)$" (list _ public))
+            (regexp #rx"^(?i:AWSSecretKey)=(.*)$" (list _ private))
+            _)
      (public-key public)
      (private-key private)]
     ;; for backward compatability my old way, just each key on own line:
-    [(list public
-           private
-           _ ...)
+    [(list* public private _)
      (public-key public)
      (private-key private)]
-    [else (error 'read-keys
-                 (string-append
-                  "First two lines of file must be:\n"
-                  "AWSAccessKeyId=<key>\n"
-                  "AWSSecretKey=<key>\n"))]))
+    [_ (error 'read-keys
+              (string-append
+               "First two lines of file must be:\n"
+               "AWSAccessKeyId=<key>\n"
+               "AWSSecretKey=<key>\n"))]))
+
+(define aws-cli-credentials
+  (make-parameter (or (getenv "AWS_SHARED_CREDENTIALS_FILE")
+                      (build-path (find-system-path 'home-dir) ".aws" "credentials"))))
+(define aws-cli-profile
+  (make-parameter (or (getenv "AWS_DEFAULT_PROFILE") "default")))
+
+(define (read-keys/aws-cli)
+  (define (get/set key param)
+    (match (get-profile-string (file->lines (aws-cli-credentials) #:mode 'text)
+                               (aws-cli-profile)
+                               key)
+      [#f (error 'read-keys/aws-cli
+                 "could not find key ~v in section ~v of ~v"
+                 key (aws-cli-profile) (aws-cli-credentials))]
+      [v (param v)]))
+  (get/set "aws_access_key_id" public-key)
+  (get/set "aws_secret_access_key" private-key))
+
+(define (get-profile-string lines section key)
+  (let find-section ([lines lines])
+    (match lines
+      [(list) #f]
+      [(cons (pregexp "^ *\\[(.+?)\\] *$" (list _ (== section))) more)
+       (let find-key ([lines more])
+         (match lines
+           [(list) #f]
+           [(cons (pregexp "^ *(.+?) *= *(.+?) *$" (list _ (== key) value)) _)
+            value]
+           [(cons _ more) (find-key more)]))]
+      [(cons _ more) (find-section more)])))
 
 (define (ensure-have-keys)
   (define (keys-blank?)
     (or (string=? "" (public-key))
         (string=? "" (private-key))))
   (when (keys-blank?)
-    (read-keys))
+    (with-handlers ([exn:fail? (λ _ (read-keys/aws-cli))])
+      (read-keys)))
   (when (keys-blank?)
     (error 'ensure-have-keys
-           (string-append "Set the parameters `public-key' and "
-                          "`private-key' to the AWS AccessKeyID "
+           (string-append "Set the parameters `public-key` and "
+                          "`private-key` to the AWS AccessKeyID "
                           "and SecretKey, respectively. "
-                          "Tip: `(read-keys)' will read them "
-                          "from a ~~/.aws-keys file."))))
+                          "Tip: `(read-keys/aws-cli)' will read them "
+                          "from a ~~/.aws/credentials file."))))
 
 (define/contract (sha256-encode str)
   (-> string? string?)

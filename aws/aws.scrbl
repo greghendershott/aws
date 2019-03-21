@@ -104,6 +104,61 @@ Your AWS public key, a.k.a. ``Access ID.''}
 Your AWS private key, a.k.a. ``Secret Key.''}
 
 
+@deftogether[(
+ @defproc[(read-keys/aws-cli) void?]
+ @defparam[aws-cli-credentials path path-string?
+ #:value
+ (or (getenv "AWS_SHARED_CREDENTIALS_FILE")
+     (build-path (find-system-path 'home-dir) ".aws" "credentials"))]
+ @defparam[aws-cli-profile name string?
+ #:value
+ (or (getenv "AWS_DEFAULT_PROFILE")
+     "default")]
+)]{
+
+@margin-note{Tip: @racket[use-iam-ec2-credentials!] is simpler and
+more secure when your code is running on an EC2 instance.}
+
+Set the parameters @racket[public-key] and @racket[private-key] by
+reading their values from the same configuration file used by the AWS
+CLI tools.
+
+@racket[read-keys/aws-cli] reads the @tt{"aws_access_key_id"} and
+@tt{"aws_secret_access_key"} items from the
+@racket[aws-cli-profile] section of the @racket[aws-cli-credentials]
+file.
+
+@history[#:added "1.14"]
+}
+
+
+@defproc[(use-iam-ec2-credentials! [iam-role-name string?]) void?]{
+
+When your code is running on an EC2 instance, instead of you supplying
+credentials in a configuration file like @tt{~/.aws/credentials} or in
+environment variables, it is possible to obtain credentials from EC2
+instance meta-data. This simplifies configuration and is more secure.
+
+For more information how to configure this, see
+@link["https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html"
+"IAM Roles for Amazon EC2"]. Step five of those instructions ---
+``Have the application retrieve a set of temporary credentials and use
+them'' --- is done by simply calling this function once when your
+program starts.
+
+Credentials are initially obtained --- and subsequently refreshed
+before they expire --- from the EC2 instance meta-data. The
+@racket[public-key] and @racket[private-key] parameters are
+automatically set to these values. Those keys are used to sign
+requests made by this library. The @tt{X-Amz-Security-Token} header is
+supplied when making requests.
+
+@history[#:added "1.10"]
+}
+
+
+@subsubsection{Deprecated}
+
 @defproc[(read-keys
 [file path? (build-path(find-system-path 'home-dir) ".aws-keys")]
 ) void?]{
@@ -120,40 +175,29 @@ AWSSecretKey=<key>
 By default this file is @tt{~/.aws-keys}. You probably want to @tt{chmod} the
 permissions of this file carefully.
 
-If your code will run on an EC2 instance, instead consider using
-@racket[use-iam-ec2-credentials!]. }
+@deprecated[#:what "function" @racket[read-keys/aws-cli]]
+@deprecated[#:what "function" @racket[use-iam-ec2-credentials!]]
+}
 
 
 @defproc[(ensure-have-keys) void?]{
 
 If either @racket[public-key] or @racket[private-key] is @racket[""],
-calls @racket[read-keys]. If either is @italic{still} blank, calls
-@racket[error] with a hopefully helpful reminder about how to set the
-parameters. }
+call @racket[read-keys] (for backward compatibility) and
+@racket[read-keys/aws-cli]. If either key parameter is @italic{still}
+blank, call @racket[error] with a hopefully helpful reminder about
+how to set the parameters.
 
+Although a number of functions in this package call
+@racket[ensure-have-keys] in an effort to "just work" even if you
+haven't yet set the public and private keys, it's probably smarter if
+you don't call it yourself. (It remains @racket[provide]d only to
+avoid breaking existing dependents.) Instead you should set the keys
+explicitly yourself, before calling functions that need them.
 
-@defproc[(use-iam-ec2-credentials! [iam-role-name string?]) void?]{
-
-@history[#:added "1.10"]
-
-When your code is running on an EC2 instance, instead of you supplying
-credentials in a configuration file (like @tt{~/.aws-keys}) or in
-environment variables, it is possible to obtain credentials from EC2
-instance meta-data. This simplifies configuration and is more secure.
-
-For more information how to configure this, see
-@link["https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html"
-"IAM Roles for Amazon EC2"]. Step five of those instructions ---
-``Have the application retrieve a set of temporary credentials and use
-them'' --- is done by simply calling this function once when your
-program starts.
-
-Credentials are initially obtained --- and subsequently refreshed
-before they expire --- from the EC2 instance meta-data. The
-@racket[public-key] and @racket[private-key] parameters are
-automatically set to these values. Those keys are used to sign
-requests made by this library. The @tt{X-Amz-Security-Token} header is
-supplied when making requests. }
+@deprecated[#:what "function" @racket[read-keys/aws-cli]]
+@deprecated[#:what "function" @racket[use-iam-ec2-credentials!]]
+}
 
 @; ----------------------------------------------------------------------------
 @subsection{Request authorization}
@@ -1097,7 +1141,7 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
     (string-append s
                    (number->string (truncate (random 15)) 16))))
 
-(ensure-have-keys)
+(read-keys/aws-cli)
 
 (create-bucket test-bucket)
 (member? test-bucket (list-buckets))
@@ -1533,7 +1577,7 @@ the values we set are available to get.
 (require aws/keys
          aws/sdb)
 
-(ensure-have-keys)
+(read-keys/aws-cli)
 
 (define test-domain "TestDomain")
 
