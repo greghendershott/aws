@@ -24,7 +24,7 @@
 @; ----------------------------------------------------------------------------
 @section{Introduction}
 
-This libary provides support for many of the
+This library provides support for many of the
 @hyperlink["http://aws.amazon.com/documentation/" "Amazon Web Services"].
 
 @subsection{Which services?}
