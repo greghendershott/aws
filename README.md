@@ -31,7 +31,7 @@ Web Services](http://aws.amazon.com/documentation/):
 
 # Requirements
 
-* Racket 6.0.1 or newer.
+* Racket 6.2 or newer.
 
 * The access keys for an Amazon Web Services account. (If you want to
   experiment but are concerned about cost, keep in mind that AWS has a
