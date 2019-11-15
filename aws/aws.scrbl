@@ -27,6 +27,12 @@
 This library provides support for many of the
 @hyperlink["http://aws.amazon.com/documentation/" "Amazon Web Services"].
 
+Speaking of support: It is not free (long-term) to use AWS ---
+including when developing and testing this package. To the extent this
+package provides any financial value to you or your organization, I
+welcome @link["https://github.com/sponsors/greghendershott"]{your
+recognition and support} --- thank you!
+
 @subsection{Which services?}
 
 The services supported are those most likely to be used both
@@ -42,9 +48,10 @@ to run. The assumption is that you can use Amazon's command line tools or web
 app console to do that. (If your application is @italic{about} managing
 infrastructure, sorry.)
 
-Also not supported is the ElastiCache service. Its application use interface
-is the usual @tt{memcached} protocol. Amazon provides another interface for
-managing the infrastructure of ElastiCache, not for using it.
+Also not supported is the ElastiCache service. Its application use
+interface is the usual memcached protocol. Amazon provides another
+interface for managing the infrastructure of ElastiCache, not for
+using it.
 
 Likewise RDS: Although Amazon lets you programatically create and manage
 database servers, your application uses them in the usual way, for
@@ -65,10 +72,11 @@ burn many hours on this, or you can use this library.
 In addition there is help for the tedium of marshalling values into and out of
 the HTTP requests and responses.
 
-This library uses my @racket[http] library to make HTTP requests, instead of
-@racket[net/url]. Why? To use HTTP 1.1 capabilities such as the @tt{Expect:
-100-continue} request header (to fail @tt{PUT} requests quickly) and the
-@tt{Range} request header (a sort of @racket[subbytes] for @tt{GET}s).
+This library uses my @racket[http] library to make HTTP requests,
+instead of @racket[net/url]. Why? To use HTTP 1.1 capabilities such as
+the @litchar{Expect: 100-continue} request header (to fail
+@litchar{PUT} requests quickly) and the @litchar{Range} request header
+(a sort of @racket[subbytes] for @litchar{GET}s).
 
 @; ----------------------------------------------------------------------------
 @section{All Services}
@@ -77,10 +85,9 @@ This library uses my @racket[http] library to make HTTP requests, instead of
 @; ----------------------------------------------------------------------------
 @subsection{Names}
 
-The names of procedures and structs generally do @italic{not} have
-special prefixes to ``group'' them. Instead, use the
-@racket[prefix-in] option for @racket[require] if you prefer a prefix
-(or need one to avoid a name collision).
+The names of procedures and structs generally do not have special
+prefixes. Use the @racket[prefix-in] option for @racket[require] if
+you prefer a prefix (or need one to avoid a name collision).
 
 For example if you want the @racket[aws/sns] procedures to have an @racket[sns-]
 prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
@@ -95,17 +102,50 @@ prefix, so that @racket[create-topic] is renamed to @racket[sns-create-topic]:
 
 @defmodule[aws/keys]
 
-@defparam[public-key key string?]{
+@subsubsection[#:tag "credential-parameters"]{Credential Parameters}
 
-Your AWS public key, a.k.a. ``Access ID.''}
+Various parameters are used by @racket[add-v4-auth-heads] to add
+@litchar{Authorization} and sometimes @litchar{X-Amz-Security-Token}
+headers to requests.
 
-@defparam[private-key key string?]{
+Although you may set these directly, see @secref["initialization"].
 
-Your AWS private key, a.k.a. ``Secret Key.''}
+@defparam[public-key key string? #:value ""]{
 
+Your AWS public key. AWS documentation often calls this the ``Access
+Key ID.''}
+
+@defparam[private-key key string? #:value ""]{
+
+Your AWS private key. AWS documention often calls this the ``Secret
+Access Key.''}
+
+@defparam[security-token token (or/c #f string?) #:value #f]{
+
+When this parameter is a non-@racket[#f] value, an
+@litchar{X-Amz-Security-Token} header with the value is added to
+requests. AWS documentation often calls this the ``session token''.
+
+@history[#:added "1.15"]
+}
+
+@subsubsection[#:tag "initialization"]{Initialization}
+
+The source of credentials depends on where your code is running. This
+package provides functions to initialize the
+@secref["credential-parameters"] for various scenarios:
+
+@nested[#:style 'inset
+@tabular[#:style 'boxed
+         #:row-properties '(bottom-border ())
+         (list
+         (list @italic{Credentials source} @italic{Example} @italic{Use})
+         (list "AWS CLI configuration file" "Your PC" @racket[credentials-from-file!])
+         (list "Environment variables" "AWS Lambda" @racket[credentials-from-environment!])
+         (list "EC2 instance metadata" "AWS EC2" @racket[credentials-from-ec2-instance!]))]]
 
 @deftogether[(
- @defproc[(read-keys/aws-cli) void?]
+ @defproc[(credentials-from-file!) void?]
  @defparam[aws-cli-credentials path path-string?
  #:value
  (or (getenv "AWS_SHARED_CREDENTIALS_FILE")
@@ -116,46 +156,55 @@ Your AWS private key, a.k.a. ``Secret Key.''}
      "default")]
 )]{
 
-@margin-note{Tip: @racket[use-iam-ec2-credentials!] is simpler and
-more secure when your code is running on an EC2 instance.}
-
-Set the parameters @racket[public-key] and @racket[private-key] by
-reading their values from the same configuration file used by the AWS
-CLI tools.
-
-@racket[read-keys/aws-cli] reads the @tt{"aws_access_key_id"} and
-@tt{"aws_secret_access_key"} items from the
+Set @secref["credential-parameters"] by reading their values from the
 @racket[aws-cli-profile] section of the @racket[aws-cli-credentials]
-file.
+file used by the AWS CLI tools:
 
-@history[#:added "1.14"]
+@nested[#:style 'inset
+@tabular[#:style 'boxed
+         #:row-properties '(bottom-border ())
+         (list
+         (list @italic{Parameter}      @italic{Configuration file item})
+         (list @racket[public-key]     @litchar{aws_access_key_id})
+         (list @racket[private-key]    @litchar{aws_secret_access_key}))]]
+
+@history[#:added "1.15"]
 }
 
+@defproc[(credentials-from-environment!) void?]{
 
-@defproc[(use-iam-ec2-credentials! [iam-role-name string?]) void?]{
+Set @secref["credential-parameters"] from environment variables as set
+by AWS Lambda:
 
-When your code is running on an EC2 instance, instead of you supplying
-credentials in a configuration file like @tt{~/.aws/credentials} or in
-environment variables, it is possible to obtain credentials from EC2
-instance meta-data. This simplifies configuration and is more secure.
+@nested[#:style 'inset
+@tabular[#:style 'boxed
+         #:row-properties '(bottom-border ())
+         (list
+         (list @italic{Parameter}      @italic{Environment variable})
+         (list @racket[public-key]     @litchar{AWS_ACCESS_KEY_ID})
+         (list @racket[private-key]    @litchar{AWS_SECRET_ACCESS_KEY})
+         (list @racket[security-token] @litchar{AWS_SESSION_TOKEN}))]]
+
+@history[#:added "1.15"]
+}
+
+@defproc[(credentials-from-ec2-instance! [iam-role-name string?]) void?]{
+
+Set @secref["credential-parameters"] from EC2 instance metadata.
+
+When running on EC2, you can obtain from EC2 instance metadata
+temporary credentials for an IAM role. This is easier to manage
+securely than using configuration files or environment variables.
 
 For more information how to configure this, see
-@link["https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html"
-"IAM Roles for Amazon EC2"]. Step five of those instructions ---
-``Have the application retrieve a set of temporary credentials and use
-them'' --- is done by simply calling this function once when your
-program starts.
+@link["https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html"]{``IAM Roles for Amazon EC2''}.
 
-Credentials are initially obtained --- and subsequently refreshed
-before they expire --- from the EC2 instance meta-data. The
-@racket[public-key] and @racket[private-key] parameters are
-automatically set to these values. Those keys are used to sign
-requests made by this library. The @tt{X-Amz-Security-Token} header is
-supplied when making requests.
+Step five of those instructions --- ``Have the application retrieve a
+set of temporary credentials and use them'' --- is done by simply
+calling this function once when your program starts.
 
-@history[#:added "1.10"]
+@history[#:added "1.15"]
 }
-
 
 @subsubsection{Deprecated}
 
@@ -172,18 +221,18 @@ AWSAccessKeyId=<key>
 AWSSecretKey=<key>
 }
 
-By default this file is @tt{~/.aws-keys}. You probably want to @tt{chmod} the
-permissions of this file carefully.
+By default this file is @litchar{~/.aws-keys}. You probably want to
+@litchar{chmod} the permissions of this file carefully.
 
-@deprecated[#:what "function" @racket[read-keys/aws-cli]]
-@deprecated[#:what "function" @racket[use-iam-ec2-credentials!]]
+@deprecated[#:what "function" @racket[credentials-from-file!]]{See also
+@racket[credentials-from-environment!] and
+@racket[credentials-from-ec2-instance!].}
 }
-
 
 @defproc[(ensure-have-keys) void?]{
 
 If either @racket[public-key] or @racket[private-key] is @racket[""],
-call @racket[read-keys] (for backward compatibility) and
+call @racket[read-keys] (for backward compatibility) and also
 @racket[read-keys/aws-cli]. If either key parameter is @italic{still}
 blank, call @racket[error] with a hopefully helpful reminder about
 how to set the parameters.
@@ -195,8 +244,33 @@ you don't call it yourself. (It remains @racket[provide]d only to
 avoid breaking existing dependents.) Instead you should set the keys
 explicitly yourself, before calling functions that need them.
 
-@deprecated[#:what "function" @racket[read-keys/aws-cli]]
-@deprecated[#:what "function" @racket[use-iam-ec2-credentials!]]
+@deprecated[#:what "function" @racket[credentials-from-file!]]{See also
+@racket[credentials-from-environment!] and
+@racket[credentials-from-ec2-instance!].}
+}
+
+@defproc[(read-keys/aws-cli) void?]{
+
+The old name for @racket[credentials-from-file!], preserved
+for backward compatibility.
+
+@deprecated[#:what "function" @racket[credentials-from-file!]]{See also
+@racket[credentials-from-environment!] and
+@racket[credentials-from-ec2-instance!].}
+
+@history[#:added "1.10"]
+}
+
+
+@defproc[(use-iam-ec2-credentials!) void?]{
+
+The old name for @racket[credentials-from-ec2-instance!], preserved
+for backward compatibility.
+
+@deprecated[#:what "function" @racket[credentials-from-ec2-instance!]]{See also
+@racket[credentials-from-file!] and @racket[credentials-from-environment!]}
+
+@history[#:added "1.10"]
 }
 
 @; ----------------------------------------------------------------------------
@@ -220,15 +294,23 @@ headers required by AWS for authorization:
 
 @itemize[
 
-@item{@tt{Authorization}: The value is calculated using
+@item{@litchar{Authorization}: The value is calculated using
 @link["https://docs.aws.amazon.com/general/latest/gr/sigv4_signing.html"
 "AWS version 4 request signing"].}
 
-@item{@tt{X-Amz-Security-Token}: The value is the token returned along
-with temporary credentials from EC2 instance data (this applies only
-if you are using @racket[use-iam-ec2-credentials!]).}
+@item{@litchar{X-Amz-Security-Token}: This header is added when the
+@racket[security-token] parameter is not @racket[#f], typically
+because:
 
-]
+@itemize[
+
+@item{You used @racket[credentials-from-ec2-instance!] therefore the token
+is automatically obtained periodically from EC2 instance metadata.}
+
+@item{You used @racket[credentials-from-environment!] to get
+credentials from environment variables set by AWS Lambda.}
+
+]}]
 
 Various functions in this library that make requests, use this
 function. As a result, you will probably not need to use it directly
@@ -323,25 +405,26 @@ another 30 seconds, the connection will be closed automatically.
 @defmodule[aws/s3]
 
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/Welcome.html"
-"S3"] provides a fairly simple and REST-ful interface. Uploading an object to
-S3 is an HTTP @tt{PUT} request. Download an object is a @tt{GET} request. And
-so on. As a result, you may feel you don't need a lot of ``wrapper'' around
-this.
+"S3"] provides a fairly simple and REST-ful interface. Uploading an
+object to S3 is an HTTP @litchar{PUT} request. Download an object is a
+@litchar{GET} request. And so on. As a result, you may feel you don't
+need a lot of ``wrapper'' around this.
 
 Where you definitely @italic{will} want help is constructing the
-@tt{Authorization} header S3 uses to authenticate requests. Doing so requires
-making a string out of specific elements of your request and ``signing'' it
-with your AWS private key. Even a small discrepancy will cause the request to
-fail authentication. As a result, @racket[aws/s3] makes it easy for you to
-create the authentication header correctly and successfully.
+@litchar{Authorization} header S3 uses to authenticate requests. Doing
+so requires making a string out of specific elements of your request
+and ``signing'' it with your AWS private key. Even a small discrepancy
+will cause the request to fail authentication. As a result,
+@racket[aws/s3] makes it easy for you to create the authentication
+header correctly and successfully.
 
 Plus, @racket[aws/s3] does provide wrappers and tries to help with
 some wrinkles. For example, S3 may give you a 302 redirect when you do
-a @tt{PUT} or @tt{POST}. You don't want to transmit the entire body,
-only to have S3 ignore it and you have to transmit it all over
-again. Instead, you want to supply the request header @tt{Expect:
-100-continue}, which lets S3 respond @italic{before} you transmit the
-body.
+a @litchar{PUT} or @litchar{POST}. You don't want to transmit the
+entire body, only to have S3 ignore it and you have to transmit it all
+over again. Instead, you want to supply the request header
+@litchar{Expect: 100-continue}, which lets S3 respond @italic{before}
+you transmit the body.
 
 @subsection{Request Method}
 
@@ -445,8 +528,8 @@ Example:
 [body #""]
 ) (values string? dict?)]{
 
-Return the URI and headers for which to make an HTTP request to
-S3. Constructs an @tt{Authorization} header based on the inputs.
+Return the URI and headers for which to make an HTTP request to S3.
+Constructs an @litchar{Authorization} header based on the inputs.
 
 }
 
@@ -468,7 +551,8 @@ S3. You may want to make your bucket names include a domain name that you
 own.
 
 If you try to create a bucket with a name that is already used by
-@italic{another} AWS account, you will get a @tt{409 Conflict} response.
+@italic{another} AWS account, you will get a @litchar{409 Conflict}
+response.
 
 If you create a bucket that already exists under your @italic{own} account,
 this operation is idempotent (it's not an error, it's simply a no-op).
@@ -516,8 +600,8 @@ List all the buckets belonging to your AWS account.
 [default string? "us-east-1"]
 ) string?]{
 
-Return @racket[bucket]'s @tt{LocationConstraint} value, if any, else
-@racket[default].
+Return @racket[bucket]'s @litchar{LocationConstraint} value, if any,
+else @racket[default].
 
 When dealing with arbitrary buckets, you might need to @racket[parameterize]
 @racket[s3-region] to this value because AWS Signature v4 requires a region to
@@ -548,12 +632,14 @@ For each such batch, @racket[proc] is called. The first time @racket[proc] is
 called, its first argument is the @racket[init] value; subsequent times it's
 given the previous value that it returned.
 
-The second argument to @racket[proc] is a @racket[(listof xexpr?)], where each
-@racket[xexpr?] respresents XML returned by S3 for each object. The XML is the
-@tt{Contents} or @tt{CommonPrefixes} portions of the
+The second argument to @racket[proc] is a @racket[(listof xexpr?)],
+where each @racket[xexpr?] respresents XML returned by S3 for each
+object. The XML is the @litchar{Contents} or @litchar{CommonPrefixes}
+portions of the
 @hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketGET.html"
-@tt{ListBucketResults}] XML response, where @tt{CommonPrefixes} are produced
-only for a non-@racket[#f] @racket[delimiter].
+@litchar{ListBucketResults}] XML response, where
+@litchar{CommonPrefixes} are produced only for a non-@racket[#f]
+@racket[delimiter].
 
 The return value of @racket[ls/proc] is the final return value of
 @racket[proc].
@@ -586,11 +672,10 @@ List objects whose names start with @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]). Return a list, each item of which is a
 list consisting of:
 
-@itemize[
-@item{ an @racket[xexpr] (as with @racket[ls/proc]) }
-@item{ response headers from a @tt{HEAD} request (as with @racket[head]) }
-@item{ an @racket[xexpr] representing the ACL (as with @racket[get-acl]) }
-]
+@itemize[ @item{ an @racket[xexpr] (as with @racket[ls/proc]) } @item{
+response headers from a @litchar{HEAD} request (as with @racket[head])
+} @item{ an @racket[xexpr] representing the ACL (as with
+@racket[get-acl]) } ]
 
 }
 
@@ -606,7 +691,7 @@ which is a list consisting of:
 
 @itemize[
 @item{ name (as with @racket[ls]) }
-@item{ response headers from a @tt{HEAD} request (as with @racket[head]) }
+@item{ response headers from a @litchar{HEAD} request (as with @racket[head]) }
 @item{ an @racket[xexpr] representing the ACL (as with @racket[get-acl]) }
 ]
 
@@ -617,8 +702,8 @@ which is a list consisting of:
 [bucket+path string?]
 ) string?]{
 
-Make a @tt{HEAD} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and return the headers as a
+Make a @litchar{HEAD} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]) and return the headers as a
 @racket[string] in @racket[net/head] format. You can provide this
 string to @racket[heads-string->dict] from @racket[http/head].
 
@@ -629,8 +714,8 @@ string to @racket[heads-string->dict] from @racket[http/head].
 [bucket+path string?]
 ) string?]{
 
-Make a @tt{DELETE} request to delete @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"])
+Make a @litchar{DELETE} request to delete @racket[bucket+path] (which
+is the form @racket["bucket/path/to/resource"])
 
 }
 
@@ -674,7 +759,7 @@ metadata changes.
 [heads dict? '()]
 ) xexpr?]{
 
-Make a @tt{GET} request for the
+Make a @litchar{GET} request for the
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
 "ACL"] of the object @racket[bucket+path] (which is the form
 @racket["bucket/path/to/resource"]).
@@ -691,9 +776,9 @@ S3 responds with an XML representation of the ACL, which is returned as an
 [heads dict? '()]
 ) void]{
 
-Make a @tt{PUT} request to set the
+Make a @litchar{PUT} request to set the
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html"
-"ACL"] of the object  @racket[bucket+path] to @racket[acl].
+"ACL"] of the object @racket[bucket+path] to @racket[acl].
 
 If @racket[acl] is @racket[#f], then the request body is empty and ACL
 changes must be provided by @racket[heads] (e.g., as a canned ACL
@@ -716,24 +801,26 @@ using @racket['x-amz-acl]).
 building block for other procedures that you may find more convenient, such as
 @racket[get/bytes] and @racket[get/file].}
 
-Make a @tt{GET} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]).
+Make a @litchar{GET} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]).
 
-The @racket[reader] procedure is called with an @racket[input-port?] and a
-@racket[string?] respresenting the response headers. The @racket[reader] should
-read the response body from the port, being careful to read the exact number
-of bytes as specified in the response header's @tt{Content-Length} field. The
-return value of @racket[reader] is the return value of @racket[get/proc].
+The @racket[reader] procedure is called with an @racket[input-port?]
+and a @racket[string?] respresenting the response headers. The
+@racket[reader] should read the response body from the port, being
+careful to read the exact number of bytes as specified in the response
+header's @litchar{Content-Length} field. The return value of
+@racket[reader] is the return value of @racket[get/proc].
 
 You may pass request headers in the optional @racket[heads] argument.
 
-The optional arguments @racket[range-begin] and @racket[range-end] are used to
-supply an HTTP @tt{Range} request header. This header, which Amazon S3 supports,
-enables a getting only a subset of the bytes.  Note that @racket[range-end] is
-@italic{ex}clusive to be consistent with the Racket convention,
-e.g. @racket[subbytes]. (The HTTP @tt{Range} header specifies the end as
-@italic{in}clusive, so your @racket[range-end] argument is decremented to make
-the value for the header.)
+The optional arguments @racket[range-begin] and @racket[range-end] are
+used to supply an HTTP @litchar{Range} request header. This header,
+which Amazon S3 supports, enables a getting only a subset of the
+bytes. Note that @racket[range-end] is @italic{ex}clusive to be
+consistent with the Racket convention, e.g. @racket[subbytes]. (The
+HTTP @litchar{Range} header specifies the end as @italic{in}clusive,
+so your @racket[range-end] argument is decremented to make the value
+for the header.)
 
 }
 
@@ -745,19 +832,20 @@ the value for the header.)
 [range-end (or/c #f exact-nonnegative-integer?) #f]
 ) bytes?]{
 
-Make a @tt{GET} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and return the response body as
-@racket[bytes?].
+Make a @litchar{GET} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]) and return the response body
+as @racket[bytes?].
 
 You may pass request headers in the optional @racket[heads] argument.
 
-The optional arguments @racket[range-begin] and @racket[range-end] are used to
-supply an optional @tt{Range} request header. This header, which Amazon S3
-supports, enables a getting only a subset of the bytes. Note that
-@racket[range-end] is @italic{ex}clusive to be consistent with the Racket
-convention, e.g. @racket[subbytes]. (The HTTP @tt{Range} header specifies the
-end as @italic{in}clusive, so your @racket[range-end] argument is decremented
-to make the value for the header.)
+The optional arguments @racket[range-begin] and @racket[range-end] are
+used to supply an optional @litchar{Range} request header. This
+header, which Amazon S3 supports, enables a getting only a subset of
+the bytes. Note that @racket[range-end] is @italic{ex}clusive to be
+consistent with the Racket convention, e.g. @racket[subbytes]. (The
+HTTP @litchar{Range} header specifies the end as @italic{in}clusive,
+so your @racket[range-end] argument is decremented to make the value
+for the header.)
 
 The response body is held in memory; if it is very large and you want to
 "stream" it instead, consider using @racket[get/proc].
@@ -773,10 +861,11 @@ The response body is held in memory; if it is very large and you want to
 [#:exists exists-flag (or/c 'error 'append 'update 'replace 'truncate 'truncate/replace) 'error]
 ) void?]{
 
-Make a @tt{GET} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]) and copy the the response body directly to
-@racket[file]. The keyword arguments @racket[#:mode] and @racket[#:exists] are
-identical to those for @racket[call-with-output-file*].
+Make a @litchar{GET} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]) and copy the the response
+body directly to @racket[file]. The keyword arguments @racket[#:mode]
+and @racket[#:exists] are identical to those for
+@racket[call-with-output-file*].
 
 You may pass request headers in the optional @racket[heads] argument.
 
@@ -805,32 +894,32 @@ block for other procedures that you may find more convenient, such as
 
 To upload more than about 100 MB, prefer @racket[multipart-put].}
 
-Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]), using the @racket[writer] procedure to
-write the request body and the @racket[reader] procedure to read the
-response body.  Returns the response header (unless it raises
-@racket[exn:fail:aws]).
+Makes a @litchar{PUT} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]), using the @racket[writer]
+procedure to write the request body and the @racket[reader] procedure
+to read the response body. Returns the response header (unless it
+raises @racket[exn:fail:aws]).
 
 The @racket[writer] procedure is given an @racket[output-port?] and a
-@racket[string?] representing the response headers. It should write the
-request body to the port. The amount written should be exactly the same as
-@racket[data-length], which is used to create a @tt{Content-Length} request
-header. You must also supply @racket[mime-type] (for example
-@racket["text/plain"]) which is used to create a @tt{Content-Type} request
-header.
+@racket[string?] representing the response headers. It should write
+the request body to the port. The amount written should be exactly the
+same as @racket[data-length], which is used to create a
+@litchar{Content-Length} request header. You must also supply
+@racket[mime-type] (for example @racket["text/plain"]) which is used
+to create a @litchar{Content-Type} request header.
 
-The @racket[reader] procedure is the same as for @racket[get/proc]. The
-response body for a @tt{PUT} request usually isn't interesting, but you
-should read it anyway.
+The @racket[reader] procedure is the same as for @racket[get/proc].
+The response body for a @litchar{PUT} request usually isn't
+interesting, but you should read it anyway.
 
-Note: If you want a @tt{Content-MD5} request header, you must calculate and
-supply it yourself in @racket[heads]. Supplying this allows S3 to verify the
-upload integrity.
+Note: If you want a @litchar{Content-MD5} request header, you must
+calculate and supply it yourself in @racket[heads]. Supplying this
+allows S3 to verify the upload integrity.
 
-@racket[chunk-len] determines the length of the @tt{Content-Encoding:
-aws-chunked} chunks used to perform
-@hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html" "AWS
-Signature v4 chunked uploads"].
+@racket[chunk-len] determines the length of the
+@litchar{Content-Encoding: aws-chunked} chunks used to perform
+@hyperlink["http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html"
+"AWS Signature v4 chunked uploads"].
 
 To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -847,14 +936,15 @@ To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 
 @margin-note{To upload more than about 100 MB, prefer @racket[multipart-put].}
 
-Makes a @tt{PUT} request for @racket[bucket+path] (which is the form
-@racket["bucket/path/to/resource"]), sending @racket[data] as the request body
-and creating a @tt{Content-Type} header from @racket[mime-type]. Returns the
-response header (unless it raises @racket[exn:fail:aws]).
+Makes a @litchar{PUT} request for @racket[bucket+path] (which is the
+form @racket["bucket/path/to/resource"]), sending @racket[data] as the
+request body and creating a @litchar{Content-Type} header from
+@racket[mime-type]. Returns the response header (unless it raises
+@racket[exn:fail:aws]).
 
-A @tt{Content-MD5} request header is automatically created from
-@racket[data]. To ensure data integrity, S3 will reject the request if the
-bytes it receives do not match the MD5 checksum.
+A @litchar{Content-MD5} request header is automatically created from
+@racket[data]. To ensure data integrity, S3 will reject the request if
+the bytes it receives do not match the MD5 checksum.
 
 To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -878,18 +968,19 @@ header (or raise @racket[exn:fail:aws]).
 The @racket[#:mode-flag] argument is identical to that of
 @racket[call-with-input-file*].
 
-If @racket[#:mime-type] is @racket[#f], then the @tt{Content-Type} header is
-guessed from the file extension, using a (very short!) list of common
-extensions. If no match is found, then
-@racket["application/x-unknown-content-type"] is used. You can customize the
-MIME type guessing by setting the @racket[path->mime-proc] parameter to your
-own procedure.
+If @racket[#:mime-type] is @racket[#f], then the
+@litchar{Content-Type} header is guessed from the file extension,
+using a (very short!) list of common extensions. If no match is found,
+then @racket["application/x-unknown-content-type"] is used. You can
+customize the MIME type guessing by setting the
+@racket[path->mime-proc] parameter to your own procedure.
 
-A @tt{Content-MD5} request header is automatically created from the
-contents of @racket[file]. To ensure data integrity, S3 will reject
-the request if the bytes it receives do not match the MD5 checksum.
+A @litchar{Content-MD5} request header is automatically created from
+the contents of @racket[file]. To ensure data integrity, S3 will
+reject the request if the bytes it receives do not match the MD5
+checksum.
 
-A @tt{Content-Disposition} request header is automatically created from
+A @litchar{Content-Disposition} request header is automatically created from
 @racket[file]. For example if @racket[file] is @racket["/foo/bar/test.txt"] or
 @racket["c:\\foo\\bar\\test.txt"] then the header
 @racket["Content-Disposition:attachment; filename=\"test.txt\""] is created.
@@ -912,10 +1003,12 @@ with a MIME type.
 
 @subsection{Multipart uploads}
 
-In addition to uploading an entire object in a single @tt{PUT} request, S3
-lets you upload it in multiple 5 MB or larger chunks, using the
+In addition to uploading an entire object in a single @litchar{PUT}
+request, S3 lets you upload it in multiple 5 MB or larger chunks,
+using the
 @hyperlink["http://docs.amazonwebservices.com/AmazonS3/2006-03-01/dev/UsingRESTAPImpUpload.html"
-"multipart upload API"]. Amazon recommends using this when the total data to upload is bigger than about 100 MB.
+"multipart upload API"]. Amazon recommends using this when the total
+data to upload is bigger than about 100 MB.
 
 
 @subsubsection{Convenience}
@@ -1064,9 +1157,9 @@ Note that S3 part numbers start with @racket[1] (not @racket[0]).
 @racket[bstr] must be at least @racket[s3-multipart-size-minimum],
 unless it's the last part.
 
-Returns a @racket[cons] of @racket[part-number] and the @tt{ETag} for the
-part. You will need to supply a list of these, one for each part, to
-@racket[complete-multipart-upload].
+Returns a @racket[cons] of @racket[part-number] and the @litchar{ETag}
+for the part. You will need to supply a list of these, one for each
+part, to @racket[complete-multipart-upload].
 
 }
 
@@ -1141,7 +1234,7 @@ Abort the multipart upload specified by the @racket[upload-id] returned from
     (string-append s
                    (number->string (truncate (random 15)) 16))))
 
-(read-keys/aws-cli)
+(credentials-from-file!)
 
 (create-bucket test-bucket)
 (member? test-bucket (list-buckets))
@@ -1361,10 +1454,11 @@ Show metadata for a specific SDB domain.
 
 @defparam[always-replace? always? boolean?]{
 
-Set this parameter to @racket[#t] to make the @tt{Item.Replace} true for all
-calls to @racket[put-attributes].  Else if at default @racket[#f] value,
-@tt{Item.Replace} will be specified only if you do it for each attribute, using
-@racket[(key val 'replace)] instead of @racket[(key val)].
+Set this parameter to @racket[#t] to make the @litchar{Item.Replace}
+true for all calls to @racket[put-attributes]. Else if at default
+@racket[#f] value, @litchar{Item.Replace} will be specified only if
+you do it for each attribute, using @racket[(key val 'replace)]
+instead of @racket[(key val)].
 
 }
 
@@ -1480,17 +1574,18 @@ multiple items in one request.
 @racket[put-attributes] and @racket[get-attributes] are a low-level interface
 that wraps SDB fairly thinly.  When you want exact control, use them.
 
-These procedures provide a set-oriented interface. For a multi-valued attribute,
-you get and set all its values together as one set.  The attribute's values are
-represented as @racket[(set/c string?)]. A collection of attributes is
-@racket[(hash/c symbol?  (set/c string?))]. When you get a multi-valued
-attribute, all of its values are grouped and presented as a @racket[(set/c
-string?)]. When you put the attribute set, all of its existing values in SDB
-are replaced by the new set of values you supply. (At a lower level, this means
-the first attribute is put to SDB using parameter @tt{Replace=true}---to clear
-any/all existing values. The other values for the attribute are put with
-@tt{Replace=false}---to preserve all of the multiple new values we are
-setting.)
+These procedures provide a set-oriented interface. For a multi-valued
+attribute, you get and set all its values together as one set. The
+attribute's values are represented as @racket[(set/c string?)]. A
+collection of attributes is @racket[(hash/c symbol? (set/c string?))].
+When you get a multi-valued attribute, all of its values are grouped
+and presented as a @racket[(set/c string?)]. When you put the
+attribute set, all of its existing values in SDB are replaced by the
+new set of values you supply. (At a lower level, this means the first
+attribute is put to SDB using parameter @litchar{Replace=true}---to
+clear any/all existing values. The other values for the attribute are
+put with @litchar{Replace=false}---to preserve all of the multiple new
+values we are setting.)
 
 }
 
@@ -1577,7 +1672,7 @@ the values we set are available to get.
 (require aws/keys
          aws/sdb)
 
-(read-keys/aws-cli)
+(credentials-from-file!)
 
 (define test-domain "TestDomain")
 
@@ -1686,24 +1781,27 @@ void?]{
 Send an email. Unless @racket[from] has been verified (for example using
 @racket[verify-email-address] SES will fail.
 
-If SES returns @tt{400 Bad Request} with
-@tt{<Code>Throttling</Code><Message>Maximum sending rate exceeded.</Message>},
-this repeatedly sleeps for a random 1-16 second interval then retries, until it
-succeeds or SES fails with some other error.
+If SES returns @litchar{400 Bad Request} with
+@litchar{<Code>Throttling</Code><Message>Maximum sending rate
+exceeded.</Message>}, this repeatedly sleeps for a random 1-16 second
+interval then retries, until it succeeds or SES fails with some other
+error.
 
 }
 
 
 @defproc[(send-raw-email [mail-from string?][rcpt-to string?][raw-message string?]) xexpr?]{
 
-Send a raw email. SES requires a @tt{Source} to be specified. If a
-@tt{Return-Path} mail header is supplied in @racket[raw-message] then that will
-be used as the @tt{Source}, otherwise @racket[mail-from] will be used.
+Send a raw email. SES requires a @litchar{Source} to be specified. If
+a @litchar{Return-Path} mail header is supplied in
+@racket[raw-message] then that will be used as the @litchar{Source},
+otherwise @racket[mail-from] will be used.
 
-If SES returns @tt{400 Bad Request} with
-@tt{<Code>Throttling</Code><Message>Maximum sending rate exceeded.</Message>},
-this repeatedly sleeps for a random 1-16 second interval then retries, until it
-succeeds or SES fails with some other error.
+If SES returns @litchar{400 Bad Request} with
+@litchar{<Code>Throttling</Code><Message>Maximum sending rate
+exceeded.</Message>}, this repeatedly sleeps for a random 1-16 second
+interval then retries, until it succeeds or SES fails with some other
+error.
 
 }
 
@@ -1772,7 +1870,7 @@ sorted in any particular order.
 The low-level procedure used by other procedures to make requests to SES.
 
 If SES adds new actions and this library isn't updated to support them, you may
-be able to support them by setting the @tt{Action} parameter.}
+be able to support them by setting the @litchar{Action} parameter.}
 
 
 @; ----------------------------------------------------------------------------
@@ -1785,16 +1883,16 @@ be able to support them by setting the @tt{Action} parameter.}
 "SNS"] lets you create topics to which notifications can be published. Each
 topic has zero or more subscriptions.
 
-Subscriptions can be of various types of endpoints, such as email, SMS, or an
-HTTP @tt{POST} of a JSON-encoded message.
+Subscriptions can be of various types of endpoints, such as email,
+SMS, or an HTTP @litchar{POST} of a JSON-encoded message.
 
 A new subscription must be confirmed by the recipient before it will receive
 notifications, to prevent unwanted notifications.
 
-Topics and subscriptions are unqiuely identified by a string referred to as an
-ARN (Amazon Resource Name).  The string is composed of the service endpoint
-hostname, your AWS account number, and a name. An example ARN is
-@tt{arn:aws:sns:us-east-1:123456789012:My-Topic}.
+Topics and subscriptions are unqiuely identified by a string referred
+to as an ARN (Amazon Resource Name). The string is composed of the
+service endpoint hostname, your AWS account number, and a name. An
+example ARN is @litchar{arn:aws:sns:us-east-1:123456789012:My-Topic}.
 
 
 @defparam[sns-endpoint v endpoint? #:value (endpoint "sns.us-east-1.amazonaws.com" #f)]{
@@ -2108,7 +2206,7 @@ The region for the service.
         )
 ]{
 
-A contract for the @tt{Units} that CloudWatch accepts. }
+A contract for the @litchar{Units} that CloudWatch accepts. }
 
 
 @defthing[period/c
@@ -2119,16 +2217,18 @@ A contract for the @tt{Units} that CloudWatch accepts. }
                       (zero? (modulo x 60)))))
 ]{
 
-A contract for the @racket[period] argument to @racket[get-metric-statistcs]
-and @racket[describe-alarms-for-metric]. CloudWatch requires the @tt{Period} to
-be a non-zero multiple of 60 seconds. }
+A contract for the @racket[period] argument to
+@racket[get-metric-statistcs] and @racket[describe-alarms-for-metric].
+CloudWatch requires the @litchar{Period} to be a non-zero multiple of
+60 seconds. }
 
 
 @defthing[statistic/c
   (or/c 'Sum 'Average 'Maximum 'Minimum 'SampleCount)
 ]{
 
-A contract for the @tt{Statistic} values that CloudWatch knows about.}
+A contract for the @litchar{Statistic} values that CloudWatch knows
+about.}
 
 
 @defthing[dimensions/c
@@ -2503,9 +2603,10 @@ Delete an archive.
 ) (or/c jsexpr? bytes?)]{
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html"
-"Get the output of a job" #:underline? #f]. If the @tt{Content-Type} of the
-response is @tt{application/json}, return the result as a @racket[jsexpr?],
-otherwise return it as @racket[bytes?].
+"Get the output of a job" #:underline? #f]. If the
+@litchar{Content-Type} of the response is @litchar{application/json},
+return the result as a @racket[jsexpr?], otherwise return it as
+@racket[bytes?].
 
 }
 
@@ -2517,15 +2618,15 @@ otherwise return it as @racket[bytes?].
 ) boolean?]{
 
 @hyperlink["http://docs.amazonwebservices.com/amazonglacier/latest/dev/api-job-output-get.html"
-"Get the output of an archive retrieval job" #:underline? #f] and put it in a
-file. Return a @racket[boolean?] whether the output matches its
-@tt{x-amz-sha256-tree-hash}.
+"Get the output of an archive retrieval job" #:underline? #f] and put
+it in a file. Return a @racket[boolean?] whether the output matches
+its @litchar{x-amz-sha256-tree-hash}.
 
 }
 
 @subsection{Example: Backup using Glacier and SDB}
 
-This example can be found in @tt{examples/backup.rkt}.
+This example can be found in @litchar{examples/backup.rkt}.
 
 @codeblock0{
 #lang racket
@@ -2620,11 +2721,12 @@ Used to represent an AWS service endpoint.
 Like @racket[alist->form-urlencoded], but @racket[dictionary] is a Racket
 @racket[dict], which includes but is not limited to an association list.
 
-Also, and more importantly, the ``percent encoding'' is done using RFC 3986,
-which encodes some extra characters compared to RFC 2396.  Doing so is
-important especially for SDB and its @tt{Select} action: The SQL-like statement
-contains characters like @racket[#\*], @racket[#\(], and @racket[#\)], which
-SDB requires to be percent-encoded.
+Also, and more importantly, the ``percent encoding'' is done using RFC
+3986, which encodes some extra characters compared to RFC 2396. Doing
+so is important especially for SDB and its @litchar{Select} action:
+The SQL-like statement contains characters like @racket[#\*],
+@racket[#\(], and @racket[#\)], which SDB requires to be
+percent-encoded.
 
 }
 
@@ -2632,28 +2734,31 @@ SDB requires to be percent-encoded.
 @; ----------------------------------------------------------------------------
 @section{Unit tests}
 
-The @racket[rackunit] tests use the @racket[test] submodule feature added in
-Racket 5.3. To run all tests, use the shell command, @tt{raco test ./}.
+The @racket[rackunit] tests use the @racket[test] submodule feature
+added in Racket 5.3. To run all tests, use the shell command,
+@litchar{raco test ./}.
 
 Be aware that some of the tests make actual requests to AWS. They may take
 awhile to complete. And to do so, the tests need some personally identifying
 information from you, such email addresses, or names for certain AWS objects
 that are safe to use for testing.
 
-For example the tests for the @racket[aws/s3] module try to @tt{PUT} then
-@tt{GET} an object to S3---but what bucket and object path name should the
-tests use? Only you can say. Similarly the @racket[aws/ses] tests try to send
-actual emails, and you need to supply suitable email addresses (including an
-email address that is intentionally not ``verified'' with SES, to test its
-response to that condition).
+For example the tests for the @racket[aws/s3] module try to
+@litchar{PUT} then @litchar{GET} an object to S3---but what bucket and
+object path name should the tests use? Only you can say. Similarly the
+@racket[aws/ses] tests try to send actual emails, and you need to
+supply suitable email addresses (including an email address that is
+intentionally not ``verified'' with SES, to test its response to that
+condition).
 
-To supply this information, provide a @tt{~/.aws-tests-data} file containing
-various personally identifying information required to run the tests.
+To supply this information, provide a @litchar{~/.aws-tests-data} file
+containing various personally identifying information required to run
+the tests.
 
 Following is an example file, which you may also find in
-@tt{tests/example-dot-aws-tests-data}. In this example, suggested default
-values are provided, whereas others are blank. You should supply or review all
-of them to make sure they are suitable for you.
+@litchar{tests/example-dot-aws-tests-data}. In this example, suggested
+default values are provided, whereas others are blank. You should
+supply or review all of them to make sure they are suitable for you.
 
 @verbatim{
 # Supply a file in this format as ~/.aws-tests-data.

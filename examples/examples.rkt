@@ -24,7 +24,7 @@
     (string-append s
                    (number->string (truncate (random 15)) 16))))
 
-(ensure-have-keys)
+(credentials-from-file!)
 
 (create-bucket bucket-name)
 (member? bucket-name (list-buckets))
@@ -74,7 +74,7 @@
 
 (define test-domain "TestDomain")
 
-(ensure-have-keys)
+(credentials-from-file!)
 
 (delete-domain test-domain)
 (create-domain test-domain)

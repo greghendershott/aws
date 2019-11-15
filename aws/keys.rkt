@@ -15,18 +15,66 @@
 
 (provide public-key
          private-key
-         read-keys
-         read-keys/aws-cli
+         security-token
+         credentials-from-file!
+         (rename-out [credentials-from-file! read-keys/aws-cli])
          aws-cli-credentials
          aws-cli-profile
-         ensure-have-keys
+         credentials-from-environment!
          sha256-encode
-         use-iam-ec2-credentials!
-         ensure-ec2-instance-credentials-and-add-token-header)
+         credentials-from-ec2-instance!
+         (rename-out [credentials-from-ec2-instance! use-iam-ec2-credentials!])
+         ensure-ec2-instance-credentials-and-add-token-header
+         read-keys
+         ensure-have-keys)
 
 (define public-key (make-parameter ""))
 (define private-key (make-parameter ""))
+(define security-token (make-parameter #f))
 
+(define aws-cli-credentials
+  (make-parameter (or (getenv "AWS_SHARED_CREDENTIALS_FILE")
+                      (build-path (find-system-path 'home-dir) ".aws" "credentials"))))
+(define aws-cli-profile
+  (make-parameter (or (getenv "AWS_DEFAULT_PROFILE") "default")))
+
+(define (credentials-from-file!)
+  (define (get/set key param)
+    (match (get-profile-string (file->lines (aws-cli-credentials) #:mode 'text)
+                               (aws-cli-profile)
+                               key)
+      [#f (error 'read-keys/aws-cli
+                 "could not find key ~v in section ~v of ~v"
+                 key (aws-cli-profile) (aws-cli-credentials))]
+      [v (param v)]))
+  (get/set "aws_access_key_id" public-key)
+  (get/set "aws_secret_access_key" private-key))
+
+(define (credentials-from-environment!)
+  (define (get/set env-var param)
+    (match (getenv env-var)
+      [#f (error 'read-keys-and-token/environment
+                 "could not find environment variable ~v"
+                 env-var)]
+      [v (param v)]))
+  (get/set "AWS_ACCESS_KEY_ID"     public-key)
+  (get/set "AWS_SECRET_ACCESS_KEY" private-key)
+  (get/set "AWS_SESSION_TOKEN"     security-token))
+
+(define (get-profile-string lines section key)
+  (let find-section ([lines lines])
+    (match lines
+      [(list) #f]
+      [(cons (pregexp "^ *\\[(.+?)\\] *$" (list _ (== section))) more)
+       (let find-key ([lines more])
+         (match lines
+           [(list) #f]
+           [(cons (pregexp "^ *(.+?) *= *(.+?) *$" (list _ (== key) value)) _)
+            value]
+           [(cons _ more) (find-key more)]))]
+      [(cons _ more) (find-section more)])))
+
+;; DEPRECATED
 (define (read-keys [file (build-path (find-system-path 'home-dir) ".aws-keys")])
   (match (file->lines file #:mode 'text #:line-mode 'any)
     ;; old format that Amazon uses for their CL tools:
@@ -45,51 +93,17 @@
                "AWSAccessKeyId=<key>\n"
                "AWSSecretKey=<key>\n"))]))
 
-(define aws-cli-credentials
-  (make-parameter (or (getenv "AWS_SHARED_CREDENTIALS_FILE")
-                      (build-path (find-system-path 'home-dir) ".aws" "credentials"))))
-(define aws-cli-profile
-  (make-parameter (or (getenv "AWS_DEFAULT_PROFILE") "default")))
-
-(define (read-keys/aws-cli)
-  (define (get/set key param)
-    (match (get-profile-string (file->lines (aws-cli-credentials) #:mode 'text)
-                               (aws-cli-profile)
-                               key)
-      [#f (error 'read-keys/aws-cli
-                 "could not find key ~v in section ~v of ~v"
-                 key (aws-cli-profile) (aws-cli-credentials))]
-      [v (param v)]))
-  (get/set "aws_access_key_id" public-key)
-  (get/set "aws_secret_access_key" private-key))
-
-(define (get-profile-string lines section key)
-  (let find-section ([lines lines])
-    (match lines
-      [(list) #f]
-      [(cons (pregexp "^ *\\[(.+?)\\] *$" (list _ (== section))) more)
-       (let find-key ([lines more])
-         (match lines
-           [(list) #f]
-           [(cons (pregexp "^ *(.+?) *= *(.+?) *$" (list _ (== key) value)) _)
-            value]
-           [(cons _ more) (find-key more)]))]
-      [(cons _ more) (find-section more)])))
-
+;; DEPRECATED
 (define (ensure-have-keys)
   (define (keys-blank?)
     (or (string=? "" (public-key))
         (string=? "" (private-key))))
   (when (keys-blank?)
-    (with-handlers ([exn:fail? (λ _ (read-keys/aws-cli))])
+    (with-handlers ([exn:fail? (λ _ (credentials-from-file!))])
       (read-keys)))
   (when (keys-blank?)
     (error 'ensure-have-keys
-           (string-append "Set the parameters `public-key` and "
-                          "`private-key` to the AWS AccessKeyID "
-                          "and SecretKey, respectively. "
-                          "Tip: `(read-keys/aws-cli)' will read them "
-                          "from a ~~/.aws/credentials file."))))
+           "Set the parameters `public-key` and `private-key`. See the `credentials-from-xxx!` functions.")))
 
 (define/contract (sha256-encode str)
   (-> string? string?)
@@ -100,44 +114,46 @@
     [s s]))
 
 
-;;; Optional: Get credentials from EC2 instance meta-data
-
-(struct creds (public private token expires))
+;;; Get credentials from EC2 instance meta-data
 
 ;; Note: These aren't parameters because parameters are per-thread --
-;; whereas we'll need to update values from one thread for all
+;; whereas we'll need to update from one thread values for all
 ;; threads.
 (define/contract iam-role (or/c #f string?) #f)
-(define/contract the-creds (or/c #f creds?) #f)
+(define/contract ec2-instance-creds-expiration (or/c #f integer?) #f)
 (define sema (make-semaphore 1))
 
-(define (use-iam-ec2-credentials! v)
+(define (credentials-from-ec2-instance! v)
   (set! iam-role v)
-  (ensure-ec2-instance-credentials-and-add-token-header '())
-  (void))
+  (ensure-ec2-instance-credentials))
 
 (define (ensure-ec2-instance-credentials-and-add-token-header d)
-  (cond [iam-role
-         (call-with-semaphore
-          sema
-          (λ ()
-            (unless (and the-creds
-                         (< (+ (current-seconds) (* 5 60))
-                            (creds-expires the-creds)))
-              (set! the-creds (get-creds)))
-            (public-key (creds-public the-creds))
-            (private-key (creds-private the-creds))
-            (dict-set d 'X-Amz-Security-Token (creds-token the-creds))))]
-        [else d]))
+  (ensure-ec2-instance-credentials)
+  (add-token-header d))
 
-(define (get-creds)
-  (define url
-    (string->url
-     (~a "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
-         iam-role)))
-  (match (call/input-url url get-pure-port read-json)
-    [(hash-table ['AccessKeyId     public]
-                 ['SecretAccessKey private]
-                 ['Token           token]
-                 ['Expiration      expiration])
-     (creds public private token (gmt-8601-string->seconds expiration))]))
+(define (ensure-ec2-instance-credentials)
+  (when iam-role
+    (call-with-semaphore
+     sema
+     (λ ()
+       (unless (and ec2-instance-creds-expiration
+                    (< (+ (current-seconds) (* 5 60))
+                       ec2-instance-creds-expiration))
+         (define url
+           (string->url
+            (~a "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+                iam-role)))
+         (match (call/input-url url get-pure-port read-json)
+           [(hash-table ['AccessKeyId     public]
+                        ['SecretAccessKey private]
+                        ['Token           token]
+                        ['Expiration      (app gmt-8601-string->seconds exp)])
+            (public-key public)
+            (private-key private)
+            (security-token token)
+            (set! ec2-instance-creds-expiration exp)]))))))
+
+(define (add-token-header d)
+  (if (security-token)
+      (dict-set d 'X-Amz-Security-Token (security-token))
+      d))
