@@ -9,7 +9,7 @@ clean:
 	rm -rf htmldocs
 
 setup:
-	raco setup --tidy $(COLLECTS)
+	raco setup --tidy --avoid-main $(COLLECTS)
 
 link:
 	raco pkg install --link -n $(PACKAGENAME) $$(pwd)
