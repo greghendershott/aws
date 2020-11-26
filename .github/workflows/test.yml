@@ -28,6 +28,8 @@ jobs:
           distribution: 'full'
           version: ${{ matrix.racket_version }}
       - name: Install Package
-        run: raco pkg install --auto
+        run: make install
+      - name: Check Deps
+        run: make check-deps
       - name: Run Tests
-        run: raco test -x -p aws
+        run: make test
