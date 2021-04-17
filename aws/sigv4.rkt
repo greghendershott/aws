@@ -29,7 +29,8 @@
 (define/contract (canonical-request method
                                     uri
                                     heads
-                                    sha256-hex-str)
+                                    sha256-hex-str
+                                    skip-uri-encode)
   (-> string? string? dict? string? string?)
   (string-join
    (list method
@@ -40,9 +41,13 @@
          sha256-hex-str)
    "\n"))
 
-(define (canonical-path u)
+(define (canonical-path u skip-uri-encode)
   (define-values (scheme host port path query fragment) (split-uri u))
-  (or path "/"))
+  (if path
+    (if skip-uri-encode
+      path
+      (string-append "/" (string-join (map uri-path-segment-encode (string-split path "/")) "/")))
+    "/"))
 
 (define (canonical-query u)
   (define-values (scheme host port path query fragment) (split-uri u))
@@ -150,7 +155,7 @@
   (define k-signing (hmac-sha256 k-service #"aws4_request"))
   k-signing)
 
-(define/contract (aws-v4-authorization method uri heads sha256-hex-str region service)
+(define/contract (aws-v4-authorization method uri heads sha256-hex-str region service skip-uri-encode)
   (-> string? string? dict? string? string? string? string?)
   (define date
     (match (dict-ref heads 'Date)
@@ -158,8 +163,8 @@
       [_ (error 'aws-v4-authorization
                 "Date header must be 8601 basic date: YYYYMMDDTHHMMSSZ")]))
   (authorization (string-to-sign date region service
-                                 (canonical-request method uri heads sha256-hex-str))
-                 heads date region service))
+                                 (canonical-request method uri heads sha256-hex-str skip-uri-encode))
+                 heads date region service skip-uri-encode))
 
 #;
 (aws-v4-authorization "get"
@@ -180,7 +185,8 @@
                                     #:uri     uri
                                     #:sha256  sha256
                                     #:region  region
-                                    #:service service)
+                                    #:service service
+                                    #:skip-uri-encode? [skip-uri-encode #f])
   (-> #:heads   dict?
       #:method  string?
       #:uri     string?
