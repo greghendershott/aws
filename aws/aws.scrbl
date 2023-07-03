@@ -429,6 +429,9 @@ over again. Instead, you want to supply the request header
 @litchar{Expect: 100-continue}, which lets S3 respond @italic{before}
 you transmit the body.
 
+For creating "Pre-signed url's", please see @racket[(sign-uri)] call in
+that section below.
+
 @subsection{Request Method}
 
 @defparam[s3-path-requests? v boolean?]{
