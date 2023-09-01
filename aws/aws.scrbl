@@ -429,9 +429,6 @@ over again. Instead, you want to supply the request header
 @litchar{Expect: 100-continue}, which lets S3 respond @italic{before}
 you transmit the body.
 
-For creating "Pre-signed url's", please see @racket[(sign-uri)] call in
-that section below.
-
 @subsection{Request Method}
 
 @defparam[s3-path-requests? v boolean?]{
@@ -536,6 +533,39 @@ Example:
 
 Return the URI and headers for which to make an HTTP request to S3.
 Constructs an @litchar{Authorization} header based on the inputs.
+
+}
+
+
+@defproc[(sign-uri
+[b+p string?]
+[method string?]
+[expires (and/c exact-positive-integer? (between/c 1 604800))]
+[headers dict?]
+) string?]{
+
+Return a pre-signed URI valid for @racket[expires] seconds.
+
+Example:
+@racketblock[
+(require aws)
+(require aws/s3)
+
+;; Your aws_access_key_id
+(public-key "akid")
+;; Your aws_secret_access_key
+(private-key "secret")
+
+;; Digital Ocean Spaces is compatible with AWS
+(s3-host "nyc3.digitaloceanspaces.com")
+(s3-region "nyc3")
+(s3-scheme "https")
+
+(define bucket+path "unixcasts/10.mp4")
+(define method "GET")
+(define expires 900)
+(sign-uri bucket+path method expires '())
+]
 
 }
 
