@@ -4,3 +4,4 @@
 #lang setup/infotab
 
 (define scribblings '(("aws.scrbl" (multi-page))))
+(define compile-omit-paths '("examples"))
