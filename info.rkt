@@ -1,6 +1,6 @@
 #lang info
 (define license 'BSD-2-Clause)
-(define version "1.15")
+(define version "1.16")
 (define collection 'multi)
 (define deps '(["base" #:version "6.3"]
                ["http" #:version "0.3"]
