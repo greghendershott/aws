@@ -992,6 +992,7 @@ To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 [bucket+path string?]
 [file path-string?]
 [#:mime-type mime-type (or/c #f string?) #f]
+[#:inline? inline? boolean? #f]
 [#:mode mode-flag (or/c 'binary 'text) 'binary]
 ) void?]{
 
@@ -1016,12 +1017,15 @@ the contents of @racket[file]. To ensure data integrity, S3 will
 reject the request if the bytes it receives do not match the MD5
 checksum.
 
-A @litchar{Content-Disposition} request header is automatically created from
-@racket[file]. For example if @racket[file] is @racket["/foo/bar/test.txt"] or
+If @racket[#:inline?] is @racket[#f], then a @litchar{Content-Disposition}
+request header is automatically created from @racket[file]. For example if
+@racket[file] is @racket["/foo/bar/test.txt"] or
 @racket["c:\\foo\\bar\\test.txt"] then the header
 @racket["Content-Disposition:attachment; filename=\"test.txt\""] is created.
-This is helpful because a web browser that is given the URI for the object
-will prompt the user to download it as a file.
+This is helpful because a web browser that is given the URI for the object will
+prompt the user to download it as a file. If @racket[#:inline?] is @racket[#t],
+then the header @racket["Content-Disposition:inline"] is created instead,
+allowing the user to view the object from their web browser.
 
 To use reduced redundancy storage, supply @racket[(hasheq 'x-amz-storage-class
 "REDUCED_REDUNDANCY")] for @racket[heads].
@@ -1081,6 +1085,7 @@ increases after each such retry."]
   [bucket+path string?]
   [file path?]
   [#:mime-type mime-type string? #f]
+  [#:inline? inline? boolean? #f]
   [#:mode mode-flag (or/c 'binary 'text) 'binary]
   [#:part-size part-size (or/c #f s3-multipart-size/c)]
   ) string?]

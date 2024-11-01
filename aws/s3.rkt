@@ -602,11 +602,13 @@
 (define/contract/provide (put/file bucket+path
                                    path
                                    #:mime-type [mime-type #f]
+                                   #:inline? [inline? #f]
                                    #:mode [mode 'binary]
                                    #:chunk-len [chunk-len aws-chunk-len-default])
   (->* (string?
         path?)
        (#:mime-type (or/c #f string?)
+        #:inline? boolean?
         #:mode (or/c 'binary 'text)
         #:chunk-len aws-chunk-len/c)
        string?)
@@ -616,7 +618,7 @@
        (file-size path)
        (or mime-type ((path->mime-proc) path))
        (hasheq 'Content-MD5 (file->Content-MD5 path)
-               'Content-Disposition (path->Content-Disposition path))
+               'Content-Disposition (path->Content-Disposition path #:inline? inline?))
        #:chunk-len chunk-len))
 
 (define (maybe-suggest-multipart-put data-len)
@@ -688,11 +690,13 @@
 (define/contract/provide (multipart-put/file bucket+path
                                              path
                                              #:mime-type [mime-type #f]
+                                             #:inline? [inline? #f]
                                              #:mode [mode 'binary]
                                              #:part-size [_part-size #f])
   (->* (string?
         path?)
        (#:mime-type (or/c #f string?)
+        #:inline? boolean?
         #:mode (or/c 'binary 'text)
         #:part-size s3-multipart-size/c)
        string?)
@@ -701,7 +705,7 @@
                  num-parts
                  (get-file-part path mode part-size)
                  (or mime-type ((path->mime-proc) path))
-                 (hasheq 'Content-Disposition (path->Content-Disposition path))))
+                 (hasheq 'Content-Disposition (path->Content-Disposition path #:inline? inline?))))
 
 (define/contract (file-sizes-and-parts path _part-size)
   (-> path?
@@ -950,10 +954,12 @@
 
 ;;; misc utils
 
-(define/contract (path->Content-Disposition path)
-  (-> path-string? string?)
-  (define-values (base name dir?) (split-path path))
-  (format "attachment; filename=\"~a\"" name))
+(define/contract (path->Content-Disposition path #:inline? [inline? #f])
+  (->* (path-string?) (#:inline? boolean?) string?)
+  (cond [inline? "inline"]
+        [else
+         (define-values (base name dir?) (split-path path))
+         (format "attachment; filename=\"~a\"" name)]))
 
 ;; ETag and Content-MD5 utils
 
@@ -1074,7 +1080,9 @@
                  "attachment; filename=\"test.txt\"")
    (when (equal? 'windows (system-path-convention-type))
      (check-equal? (path->Content-Disposition "c:\\foo\\bar\\test.txt")
-                   "attachment; filename=\"test.txt\"")))
+                   "attachment; filename=\"test.txt\""))
+   (check-equal? (path->Content-Disposition "/foo/bar/test.txt" #:inline? #t)
+                 "inline"))
 
   ;; Append an incrementing suffix to bucket names used in
   ;; `test-bucket-ops`. Rationale: There can be intermittent errors --
