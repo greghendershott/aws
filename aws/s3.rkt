@@ -1,4 +1,4 @@
-;; Copyright (c) 2012-2022 by Greg Hendershott.
+;; Copyright (c) 2012-2022, 2026 by Greg Hendershott.
 ;; SPDX-License-Identifier: BSD-2-Clause
 
 #lang at-exp racket/base
@@ -256,13 +256,16 @@
         #:delimiter (or/c #f string?))
        any/c)
   (define-values (b p u) (bucket+path->bucket&path&uri b+p))
-  (let loop ([marker ""]
-             [cum init])
+  (let fetch ([token #f]
+              [result init])
     ;; Ignore the path in the URI. This is an operation on the bucket.
     ;; Instead use the path for the prefix query parameter.
-    (define qp (dict->form-urlencoded `((prefix ,p)
-                                        (marker ,marker)
+    (define qp (dict->form-urlencoded `((list-type 2)
+                                        (prefix ,p)
                                         (max-keys ,(~a max-each))
+                                        ,@(if token
+                                              `((continuation-token ,token))
+                                              '())
                                         ,@(if delimiter
                                               `((delimiter ,delimiter))
                                               '()))))
@@ -276,20 +279,16 @@
     (define prefixes (if delimiter
                          (se-path*/elements '(CommonPrefixes) xpr)
                          null))
-    (define truncated? (equal? "true" (se-path* '(IsTruncated) xpr)))
-    (define next-marker (and truncated?
-                             (if delimiter
-                                 (se-path* '(NextMarker) xpr)
-                                 (se-path* '(Key) (last contents)))))
-    (let* ([cum (if (null? contents)
-                    cum
-                    (f cum contents))]
-           [cum (if (null? prefixes)
-                    cum
-                    (f cum prefixes))])
-      (if truncated?
-          (loop next-marker cum)
-          cum))))
+    (let* ([result (if (null? contents)
+                       result
+                       (f result contents))]
+           [result (if (null? prefixes)
+                       result
+                       (f result prefixes))])
+      (match (and (equal? "true" (se-path* '(IsTruncated) xpr))
+                  (se-path* '(NextContinuationToken) xpr))
+        [(? string? token) (fetch token result)]
+        [#f result]))))
 
 (define/contract/provide (ls b+p)
   (-> string? (listof string?))
@@ -315,7 +314,7 @@
     (define-values (u h)
       (uri&headers b+p/to
                    "PUT"
-                   (dict-set* 
+                   (dict-set*
                     heads
                     'x-amz-copy-source
                     (string-append "/" (uri-encode b+p/from)))))
