@@ -1,4 +1,4 @@
-;; Copyright (c) 2012-2022 by Greg Hendershott.
+;; Copyright (c) 2012-2022, 2026 by Greg Hendershott.
 ;; SPDX-License-Identifier: BSD-2-Clause
 
 #lang racket/base
@@ -75,10 +75,10 @@
   (define (hex n) (string-ref "0123456789ABCDEF" n))
   (string #\% (hex (quotient number 16)) (hex (modulo number 16))))
 
-(define self-chars
+(define no-encode-chars
   (list->seteq
    (append*
-    (for/list ([x (in-list `(#\% #\_ #\- #\. #\~ [#\A . #\Z] [#\a . #\z] [#\0 . #\9]))])
+    (for/list ([x (in-list `(#\_ #\- #\. #\~ [#\A . #\Z] [#\a . #\z] [#\0 . #\9]))])
       (match x
         [(cons from thru)
          (for/list ([i (in-range (char->integer from) (add1 (char->integer thru)))]) i)]
@@ -88,15 +88,17 @@
   (define int->string (compose1 string integer->char))
   (string-append*
    (for/list ([byte (in-bytes (string->bytes/utf-8 in))])
-     (cond [(set-member? self-chars byte)  (int->string byte)]
-           [(eq? byte (char->integer #\/)) (if encode-slash? "%2F" (int->string byte))]
-           [else                           (number->hex-string byte)]))))
+     (cond
+       [(set-member? no-encode-chars byte) (int->string byte)]
+       [(eq? byte (char->integer #\/))     (if encode-slash? "%2F" (int->string byte))]
+       [else                               (number->hex-string byte)]))))
 
 (module+ test
   (check-equal? (our-encode "AaZz09") "AaZz09")
   (check-equal? (our-encode "/path/to" #:encode-slash? #t) "%2Fpath%2Fto")
   (check-equal? (our-encode "/path/to" #:encode-slash? #f) "/path/to")
-  (check-equal? (our-encode "ሴ") "%E1%88%B4"))
+  (check-equal? (our-encode "ሴ") "%E1%88%B4")
+  (check-equal? (our-encode "%") "%25"))
 
 (define (string-to-sign 8601-date region service canonical-request)
   (string-join
