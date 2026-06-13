@@ -140,7 +140,8 @@
                        #:uri     uri
                        #:sha256  body-hash
                        #:region  (s3-region)
-                       #:service "s3")))
+                       #:service "s3"
+                       #:skip-uri-encode? #t)))
 
 (define/contract (add-auth-heads uri method [heads '()] [body #""])
   (->* (string? string?) (dict? bytes?) dict?)
